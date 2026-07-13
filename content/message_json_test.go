@@ -347,7 +347,7 @@ func TestAIMessageUnmarshalFreshState(t *testing.T) {
 			want: content.AIMessage{Message: content.Message{Role: content.RoleAssistant}},
 		},
 		{
-			name:            "malformed JSON clears stale state and returns syntax error",
+			name:            "direct method clears stale state for malformed top-level JSON",
 			data:            `{"role":"assistant","usage":`,
 			direct:          true,
 			wantSyntaxError: true,
@@ -375,6 +375,10 @@ func TestAIMessageUnmarshalFreshState(t *testing.T) {
 
 			got := populated
 			var err error
+			// encoding/json rejects malformed top-level syntax before it
+			// dispatches to UnmarshalJSON, so only the direct method can clear
+			// the receiver for that case. Semantic decode errors are valid JSON
+			// and exercise the normal json.Unmarshal dispatch below.
 			if tt.direct {
 				err = got.UnmarshalJSON([]byte(tt.data))
 			} else {
@@ -493,6 +497,17 @@ func FuzzAIMessageJSON(f *testing.F) {
 		var restored content.AIMessage
 		if err := restored.UnmarshalJSON(encoded); err != nil {
 			t.Fatalf("UnmarshalJSON(MarshalJSON()) error = %v", err)
+		}
+		if !reflect.DeepEqual(restored, message) {
+			t.Fatalf("decode-encode-decode = %#v, want %#v", restored, message)
+		}
+
+		reencoded, err := restored.MarshalJSON()
+		if err != nil {
+			t.Fatalf("second MarshalJSON() error = %v", err)
+		}
+		if !bytes.Equal(reencoded, encoded) {
+			t.Fatalf("marshal fixed point = %s, want %s", reencoded, encoded)
 		}
 	})
 }

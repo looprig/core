@@ -129,7 +129,7 @@ func (m AIMessage) MarshalJSON() ([]byte, error) {
 		if err := m.Usage.Validate(); err != nil {
 			return nil, err
 		}
-		u := usageToJSON(*m.Usage)
+		u := usageJSON(*m.Usage)
 		usage = &u
 	}
 
@@ -158,7 +158,7 @@ func (m *AIMessage) UnmarshalJSON(data []byte) error {
 
 	var usage *Usage
 	if j.Usage != nil {
-		u := j.Usage.toUsage()
+		u := Usage(*j.Usage)
 		if err := u.Validate(); err != nil {
 			return err
 		}
@@ -170,26 +170,6 @@ func (m *AIMessage) UnmarshalJSON(data []byte) error {
 		Usage:   usage,
 	}
 	return nil
-}
-
-func usageToJSON(u Usage) usageJSON {
-	return usageJSON{
-		InputTokens:         u.InputTokens,
-		OutputTokens:        u.OutputTokens,
-		CacheReadTokens:     u.CacheReadTokens,
-		CacheCreationTokens: u.CacheCreationTokens,
-		ReasoningTokens:     u.ReasoningTokens,
-	}
-}
-
-func (u usageJSON) toUsage() Usage {
-	return Usage{
-		InputTokens:         u.InputTokens,
-		OutputTokens:        u.OutputTokens,
-		CacheReadTokens:     u.CacheReadTokens,
-		CacheCreationTokens: u.CacheCreationTokens,
-		ReasoningTokens:     u.ReasoningTokens,
-	}
 }
 
 // toolResultMessageJSON is the wire form of ToolResultMessage. ToolResultMessage
