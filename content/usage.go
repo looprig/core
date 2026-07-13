@@ -2,20 +2,28 @@ package content
 
 import "strconv"
 
-const (
-	usageFieldInputTokens         string     = "InputTokens"
-	usageFieldOutputTokens        string     = "OutputTokens"
-	usageFieldCacheReadTokens     string     = "CacheReadTokens"
-	usageFieldCacheCreationTokens string     = "CacheCreationTokens"
-	usageFieldReasoningTokens     string     = "ReasoningTokens"
-	usageFieldContextTokens       string     = "ContextTokens"
-	usageFieldTotalTokens         string     = "TotalTokens"
-	usageReasonExceedsOutput      string     = "exceeds OutputTokens"
-	maximumTokenCount             TokenCount = ^TokenCount(0)
-)
-
 // TokenCount is a normalized count of model tokens.
 type TokenCount uint64
+
+// UsageField identifies a normalized usage value or derived total.
+type UsageField string
+
+const (
+	UsageFieldInputTokens         UsageField = "InputTokens"
+	UsageFieldOutputTokens        UsageField = "OutputTokens"
+	UsageFieldCacheReadTokens     UsageField = "CacheReadTokens"
+	UsageFieldCacheCreationTokens UsageField = "CacheCreationTokens"
+	UsageFieldReasoningTokens     UsageField = "ReasoningTokens"
+	UsageFieldContextTokens       UsageField = "ContextTokens"
+	UsageFieldTotalTokens         UsageField = "TotalTokens"
+)
+
+// UsageValidationReason identifies why normalized usage is invalid.
+type UsageValidationReason string
+
+const UsageValidationReasonReasoningExceedsOutput UsageValidationReason = "exceeds OutputTokens"
+
+const maximumTokenCount TokenCount = ^TokenCount(0)
 
 // Usage is normalized model token usage.
 type Usage struct {
@@ -28,23 +36,23 @@ type Usage struct {
 
 // UsageValidationError reports an invalid relationship between usage fields.
 type UsageValidationError struct {
-	Field  string
-	Reason string
+	Field  UsageField
+	Reason UsageValidationReason
 }
 
 func (e *UsageValidationError) Error() string {
-	return "content: invalid usage field " + e.Field + ": " + e.Reason
+	return "content: invalid usage field " + string(e.Field) + ": " + string(e.Reason)
 }
 
 // UsageOverflowError reports a token-count addition that cannot be represented.
 type UsageOverflowError struct {
-	Field string
+	Field UsageField
 	Left  TokenCount
 	Right TokenCount
 }
 
 func (e *UsageOverflowError) Error() string {
-	return "content: usage field " + e.Field + " overflow: " +
+	return "content: usage field " + string(e.Field) + " overflow: " +
 		strconv.FormatUint(uint64(e.Left), 10) + " + " +
 		strconv.FormatUint(uint64(e.Right), 10)
 }
@@ -53,8 +61,8 @@ func (e *UsageOverflowError) Error() string {
 func (u Usage) Validate() error {
 	if u.ReasoningTokens > u.OutputTokens {
 		return &UsageValidationError{
-			Field:  usageFieldReasoningTokens,
-			Reason: usageReasonExceedsOutput,
+			Field:  UsageFieldReasoningTokens,
+			Reason: UsageValidationReasonReasoningExceedsOutput,
 		}
 	}
 	return nil
@@ -62,11 +70,11 @@ func (u Usage) Validate() error {
 
 // ContextTokens returns all input tokens that occupy model context.
 func (u Usage) ContextTokens() (TokenCount, error) {
-	input, err := addTokenCounts(usageFieldContextTokens, u.InputTokens, u.CacheReadTokens)
+	input, err := addTokenCounts(UsageFieldContextTokens, u.InputTokens, u.CacheReadTokens)
 	if err != nil {
 		return 0, err
 	}
-	return addTokenCounts(usageFieldContextTokens, input, u.CacheCreationTokens)
+	return addTokenCounts(UsageFieldContextTokens, input, u.CacheCreationTokens)
 }
 
 // TotalTokens returns context plus output tokens.
@@ -75,7 +83,7 @@ func (u Usage) TotalTokens() (TokenCount, error) {
 	if err != nil {
 		return 0, err
 	}
-	return addTokenCounts(usageFieldTotalTokens, contextTokens, u.OutputTokens)
+	return addTokenCounts(UsageFieldTotalTokens, contextTokens, u.OutputTokens)
 }
 
 // Add validates and combines two usage values field by field.
@@ -87,30 +95,31 @@ func (u Usage) Add(other Usage) (Usage, error) {
 		return Usage{}, err
 	}
 
+	return addValidUsage(u, other)
+}
+
+func addValidUsage(left Usage, right Usage) (Usage, error) {
 	var sum Usage
-	fields := []struct {
-		name  string
-		left  TokenCount
-		right TokenCount
-		set   func(TokenCount)
-	}{
-		{name: usageFieldReasoningTokens, left: u.ReasoningTokens, right: other.ReasoningTokens, set: func(value TokenCount) { sum.ReasoningTokens = value }},
-		{name: usageFieldInputTokens, left: u.InputTokens, right: other.InputTokens, set: func(value TokenCount) { sum.InputTokens = value }},
-		{name: usageFieldOutputTokens, left: u.OutputTokens, right: other.OutputTokens, set: func(value TokenCount) { sum.OutputTokens = value }},
-		{name: usageFieldCacheReadTokens, left: u.CacheReadTokens, right: other.CacheReadTokens, set: func(value TokenCount) { sum.CacheReadTokens = value }},
-		{name: usageFieldCacheCreationTokens, left: u.CacheCreationTokens, right: other.CacheCreationTokens, set: func(value TokenCount) { sum.CacheCreationTokens = value }},
+	var err error
+	if sum.ReasoningTokens, err = addTokenCounts(UsageFieldReasoningTokens, left.ReasoningTokens, right.ReasoningTokens); err != nil {
+		return Usage{}, err
 	}
-	for _, field := range fields {
-		value, err := addTokenCounts(field.name, field.left, field.right)
-		if err != nil {
-			return Usage{}, err
-		}
-		field.set(value)
+	if sum.InputTokens, err = addTokenCounts(UsageFieldInputTokens, left.InputTokens, right.InputTokens); err != nil {
+		return Usage{}, err
+	}
+	if sum.OutputTokens, err = addTokenCounts(UsageFieldOutputTokens, left.OutputTokens, right.OutputTokens); err != nil {
+		return Usage{}, err
+	}
+	if sum.CacheReadTokens, err = addTokenCounts(UsageFieldCacheReadTokens, left.CacheReadTokens, right.CacheReadTokens); err != nil {
+		return Usage{}, err
+	}
+	if sum.CacheCreationTokens, err = addTokenCounts(UsageFieldCacheCreationTokens, left.CacheCreationTokens, right.CacheCreationTokens); err != nil {
+		return Usage{}, err
 	}
 	return sum, nil
 }
 
-func addTokenCounts(field string, left TokenCount, right TokenCount) (TokenCount, error) {
+func addTokenCounts(field UsageField, left TokenCount, right TokenCount) (TokenCount, error) {
 	if right > maximumTokenCount-left {
 		return 0, &UsageOverflowError{Field: field, Left: left, Right: right}
 	}

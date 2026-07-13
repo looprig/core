@@ -11,10 +11,11 @@ func TestUsageValidate(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		usage     Usage
-		wantField string
-		wantErr   bool
+		name       string
+		usage      Usage
+		wantField  UsageField
+		wantReason UsageValidationReason
+		wantErr    bool
 	}{
 		{name: "zero value", usage: Usage{}},
 		{
@@ -40,8 +41,9 @@ func TestUsageValidate(t *testing.T) {
 				OutputTokens:    7,
 				ReasoningTokens: 8,
 			},
-			wantField: "ReasoningTokens",
-			wantErr:   true,
+			wantField:  UsageFieldReasoningTokens,
+			wantReason: UsageValidationReasonReasoningExceedsOutput,
+			wantErr:    true,
 		},
 	}
 
@@ -64,8 +66,8 @@ func TestUsageValidate(t *testing.T) {
 			if validationErr.Field != tt.wantField {
 				t.Errorf("UsageValidationError.Field = %q, want %q", validationErr.Field, tt.wantField)
 			}
-			if validationErr.Reason == "" {
-				t.Error("UsageValidationError.Reason is empty")
+			if validationErr.Reason != tt.wantReason {
+				t.Errorf("UsageValidationError.Reason = %q, want %q", validationErr.Reason, tt.wantReason)
 			}
 		})
 	}
@@ -78,7 +80,7 @@ func TestUsageContextTokens(t *testing.T) {
 		name      string
 		usage     Usage
 		want      TokenCount
-		wantField string
+		wantField UsageField
 		wantLeft  TokenCount
 		wantRight TokenCount
 		wantErr   bool
@@ -102,12 +104,21 @@ func TestUsageContextTokens(t *testing.T) {
 			want: 21,
 		},
 		{
+			name: "exact maximum succeeds",
+			usage: Usage{
+				InputTokens:         maxTokenCount - 2,
+				CacheReadTokens:     1,
+				CacheCreationTokens: 1,
+			},
+			want: maxTokenCount,
+		},
+		{
 			name: "uncached plus cache read overflow",
 			usage: Usage{
 				InputTokens:     maxTokenCount,
 				CacheReadTokens: 1,
 			},
-			wantField: "ContextTokens",
+			wantField: UsageFieldContextTokens,
 			wantLeft:  maxTokenCount,
 			wantRight: 1,
 			wantErr:   true,
@@ -119,7 +130,7 @@ func TestUsageContextTokens(t *testing.T) {
 				CacheReadTokens:     1,
 				CacheCreationTokens: 1,
 			},
-			wantField: "ContextTokens",
+			wantField: UsageFieldContextTokens,
 			wantLeft:  maxTokenCount,
 			wantRight: 1,
 			wantErr:   true,
@@ -143,7 +154,7 @@ func TestUsageTotalTokens(t *testing.T) {
 		name      string
 		usage     Usage
 		want      TokenCount
-		wantField string
+		wantField UsageField
 		wantLeft  TokenCount
 		wantRight TokenCount
 		wantErr   bool
@@ -158,12 +169,20 @@ func TestUsageTotalTokens(t *testing.T) {
 			want: 36,
 		},
 		{
+			name: "exact maximum succeeds",
+			usage: Usage{
+				InputTokens:  maxTokenCount - 1,
+				OutputTokens: 1,
+			},
+			want: maxTokenCount,
+		},
+		{
 			name: "context overflow is preserved",
 			usage: Usage{
 				InputTokens:     maxTokenCount,
 				CacheReadTokens: 1,
 			},
-			wantField: "ContextTokens",
+			wantField: UsageFieldContextTokens,
 			wantLeft:  maxTokenCount,
 			wantRight: 1,
 			wantErr:   true,
@@ -174,7 +193,7 @@ func TestUsageTotalTokens(t *testing.T) {
 				InputTokens:  maxTokenCount,
 				OutputTokens: 1,
 			},
-			wantField: "TotalTokens",
+			wantField: UsageFieldTotalTokens,
 			wantLeft:  maxTokenCount,
 			wantRight: 1,
 			wantErr:   true,
@@ -208,8 +227,8 @@ func TestUsageAdd(t *testing.T) {
 		left                Usage
 		right               Usage
 		want                Usage
-		wantValidationField string
-		wantOverflowField   string
+		wantValidationField UsageField
+		wantOverflowField   UsageField
 		wantErr             bool
 	}{
 		{
@@ -230,55 +249,79 @@ func TestUsageAdd(t *testing.T) {
 				ReasoningTokens:     14,
 			},
 		},
+		{
+			name: "exact maximum succeeds",
+			left: Usage{
+				InputTokens:         maxTokenCount - 1,
+				OutputTokens:        maxTokenCount - 5,
+				CacheReadTokens:     maxTokenCount - 2,
+				CacheCreationTokens: maxTokenCount - 3,
+				ReasoningTokens:     maxTokenCount - 5,
+			},
+			right: Usage{
+				InputTokens:         1,
+				OutputTokens:        5,
+				CacheReadTokens:     2,
+				CacheCreationTokens: 3,
+				ReasoningTokens:     5,
+			},
+			want: Usage{
+				InputTokens:         maxTokenCount,
+				OutputTokens:        maxTokenCount,
+				CacheReadTokens:     maxTokenCount,
+				CacheCreationTokens: maxTokenCount,
+				ReasoningTokens:     maxTokenCount,
+			},
+		},
 		{name: "right additive identity", left: value, right: zero, want: value},
 		{name: "left additive identity", left: zero, right: value, want: value},
 		{
 			name:                "invalid left operand",
 			left:                Usage{ReasoningTokens: 1},
 			right:               zero,
-			wantValidationField: "ReasoningTokens",
+			wantValidationField: UsageFieldReasoningTokens,
 			wantErr:             true,
 		},
 		{
 			name:                "invalid right operand",
 			left:                zero,
 			right:               Usage{ReasoningTokens: 1},
-			wantValidationField: "ReasoningTokens",
+			wantValidationField: UsageFieldReasoningTokens,
 			wantErr:             true,
 		},
 		{
 			name:              "input overflow",
 			left:              Usage{InputTokens: maxTokenCount},
 			right:             Usage{InputTokens: 1},
-			wantOverflowField: "InputTokens",
+			wantOverflowField: UsageFieldInputTokens,
 			wantErr:           true,
 		},
 		{
 			name:              "output overflow",
 			left:              Usage{OutputTokens: maxTokenCount, ReasoningTokens: 1},
 			right:             Usage{OutputTokens: 1},
-			wantOverflowField: "OutputTokens",
+			wantOverflowField: UsageFieldOutputTokens,
 			wantErr:           true,
 		},
 		{
 			name:              "cache read overflow",
 			left:              Usage{CacheReadTokens: maxTokenCount},
 			right:             Usage{CacheReadTokens: 1},
-			wantOverflowField: "CacheReadTokens",
+			wantOverflowField: UsageFieldCacheReadTokens,
 			wantErr:           true,
 		},
 		{
 			name:              "cache creation overflow",
 			left:              Usage{CacheCreationTokens: maxTokenCount},
 			right:             Usage{CacheCreationTokens: 1},
-			wantOverflowField: "CacheCreationTokens",
+			wantOverflowField: UsageFieldCacheCreationTokens,
 			wantErr:           true,
 		},
 		{
 			name:              "reasoning overflow",
 			left:              Usage{OutputTokens: maxTokenCount, ReasoningTokens: maxTokenCount},
 			right:             Usage{OutputTokens: 1, ReasoningTokens: 1},
-			wantOverflowField: "ReasoningTokens",
+			wantOverflowField: UsageFieldReasoningTokens,
 			wantErr:           true,
 		},
 	}
@@ -331,7 +374,7 @@ func assertUsageCountResult(
 	got TokenCount,
 	err error,
 	want TokenCount,
-	wantField string,
+	wantField UsageField,
 	wantLeft TokenCount,
 	wantRight TokenCount,
 	wantErr bool,
