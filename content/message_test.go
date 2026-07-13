@@ -1,6 +1,7 @@
 package content_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/looprig/core/content"
@@ -172,6 +173,48 @@ func TestToolResultMessage_Fields(t *testing.T) {
 			}
 			if len(tt.msg.Blocks) != tt.wantBlockLen {
 				t.Errorf("len(Blocks) = %d, want %d", len(tt.msg.Blocks), tt.wantBlockLen)
+			}
+		})
+	}
+}
+
+func TestAIMessage_Usage(t *testing.T) {
+	tests := []struct {
+		name      string
+		usage     *content.Usage
+		wantUsage *content.Usage
+	}{
+		{name: "nil usage remains optional"},
+		{name: "zero usage remains present", usage: &content.Usage{}, wantUsage: &content.Usage{}},
+		{
+			name: "populated usage is accessible",
+			usage: &content.Usage{
+				InputTokens:         10,
+				OutputTokens:        5,
+				CacheReadTokens:     3,
+				CacheCreationTokens: 2,
+				ReasoningTokens:     1,
+			},
+			wantUsage: &content.Usage{
+				InputTokens:         10,
+				OutputTokens:        5,
+				CacheReadTokens:     3,
+				CacheCreationTokens: 2,
+				ReasoningTokens:     1,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			msg := content.AIMessage{
+				Message: content.Message{Role: content.RoleAssistant},
+				Usage:   tt.usage,
+			}
+			if !reflect.DeepEqual(msg.Usage, tt.wantUsage) {
+				t.Errorf("Usage = %#v, want %#v", msg.Usage, tt.wantUsage)
 			}
 		})
 	}

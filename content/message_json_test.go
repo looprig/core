@@ -1,7 +1,9 @@
 package content_test
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -210,4 +212,287 @@ func TestMessageJSONRoundTrip(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAIMessageJSONUsageRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	allBlocks := []content.Block{
+		&content.TextBlock{Text: "hello"},
+		&content.ImageBlock{MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{URL: "https://example.com/image.png"}},
+		&content.AudioBlock{MediaType: content.MediaTypeAudioMPEG, Data: []byte("audio")},
+		&content.DocumentBlock{MediaType: content.MediaTypeDocumentMarkdown, Name: "notes.md", Text: "notes"},
+		&content.ThinkingBlock{Thinking: "considering", Signature: "sig_1"},
+		&content.ToolUseBlock{ID: "tu_1", Name: "lookup", Input: json.RawMessage(`{"query":"tokens"}`)},
+		&content.ToolResultBlock{
+			ToolUseID: "tu_nested",
+			Content: []content.Block{
+				&content.TextBlock{Text: "nested result"},
+				&content.ThinkingBlock{Thinking: "nested thought", Signature: "sig_nested"},
+			},
+		},
+	}
+	fullUsage := &content.Usage{
+		InputTokens:         101,
+		OutputTokens:        53,
+		CacheReadTokens:     17,
+		CacheCreationTokens: 19,
+		ReasoningTokens:     23,
+	}
+
+	tests := []struct {
+		name       string
+		in         content.AIMessage
+		wantUsage  *content.Usage
+		wantBlocks []content.Block
+		wantWire   string
+		unwantWire string
+		fixedPoint bool
+	}{
+		{
+			name:       "nil usage is omitted and round trips nil",
+			in:         content.AIMessage{Message: content.Message{Role: content.RoleAssistant}},
+			wantUsage:  nil,
+			unwantWire: `"usage"`,
+			fixedPoint: true,
+		},
+		{
+			name:       "present zero usage emits object and round trips non-nil",
+			in:         content.AIMessage{Message: content.Message{Role: content.RoleAssistant}, Usage: &content.Usage{}},
+			wantUsage:  &content.Usage{},
+			wantWire:   `"usage":{}`,
+			fixedPoint: true,
+		},
+		{
+			name:       "all five usage fields survive",
+			in:         content.AIMessage{Message: content.Message{Role: content.RoleAssistant}, Usage: fullUsage},
+			wantUsage:  fullUsage,
+			wantWire:   `"ReasoningTokens":23`,
+			fixedPoint: true,
+		},
+		{
+			name: "all supported tagged blocks remain faithful",
+			in: content.AIMessage{
+				Message: content.Message{Role: content.RoleAssistant, Blocks: allBlocks},
+				Usage:   fullUsage,
+			},
+			wantUsage:  fullUsage,
+			wantBlocks: allBlocks,
+			wantWire:   `"type":"tool_use"`,
+			fixedPoint: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			data, err := json.Marshal(tt.in)
+			if err != nil {
+				t.Fatalf("json.Marshal(AIMessage) error = %v", err)
+			}
+			if tt.wantWire != "" && !strings.Contains(string(data), tt.wantWire) {
+				t.Errorf("marshalled JSON = %s, want it to contain %s", data, tt.wantWire)
+			}
+			if tt.unwantWire != "" && strings.Contains(string(data), tt.unwantWire) {
+				t.Errorf("marshalled JSON = %s, do not want it to contain %s", data, tt.unwantWire)
+			}
+
+			var got content.AIMessage
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatalf("json.Unmarshal(AIMessage) error = %v", err)
+			}
+			if !reflect.DeepEqual(got.Usage, tt.wantUsage) {
+				t.Errorf("Usage = %#v, want %#v", got.Usage, tt.wantUsage)
+			}
+			if !reflect.DeepEqual(got.Blocks, tt.wantBlocks) {
+				t.Errorf("Blocks = %#v, want %#v", got.Blocks, tt.wantBlocks)
+			}
+			if tt.fixedPoint {
+				remarshalled, err := json.Marshal(got)
+				if err != nil {
+					t.Fatalf("second json.Marshal(AIMessage) error = %v", err)
+				}
+				if !bytes.Equal(remarshalled, data) {
+					t.Errorf("marshal fixed point = %s, want %s", remarshalled, data)
+				}
+			}
+		})
+	}
+}
+
+func TestAIMessageUnmarshalFreshState(t *testing.T) {
+	t.Parallel()
+
+	populated := content.AIMessage{
+		Message: content.Message{
+			Role:   content.RoleAssistant,
+			Blocks: []content.Block{&content.TextBlock{Text: "stale"}},
+		},
+		Usage: &content.Usage{InputTokens: 10, OutputTokens: 5, ReasoningTokens: 2},
+	}
+
+	tests := []struct {
+		name              string
+		data              string
+		want              content.AIMessage
+		direct            bool
+		wantSyntaxError   bool
+		wantTypeError     bool
+		wantValidationErr bool
+	}{
+		{
+			name: "absent blocks and usage clear prior values",
+			data: `{"role":"assistant"}`,
+			want: content.AIMessage{Message: content.Message{Role: content.RoleAssistant}},
+		},
+		{
+			name:            "malformed JSON clears stale state and returns syntax error",
+			data:            `{"role":"assistant","usage":`,
+			direct:          true,
+			wantSyntaxError: true,
+		},
+		{
+			name:          "usage object wrong type clears stale state and returns type error",
+			data:          `{"role":"assistant","usage":"many"}`,
+			wantTypeError: true,
+		},
+		{
+			name:          "usage field wrong type clears stale state and returns type error",
+			data:          `{"role":"assistant","usage":{"InputTokens":"many"}}`,
+			wantTypeError: true,
+		},
+		{
+			name:              "reasoning over output clears stale state and returns validation error",
+			data:              `{"role":"assistant","usage":{"OutputTokens":2,"ReasoningTokens":3}}`,
+			wantValidationErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := populated
+			var err error
+			if tt.direct {
+				err = got.UnmarshalJSON([]byte(tt.data))
+			} else {
+				err = json.Unmarshal([]byte(tt.data), &got)
+			}
+			if !tt.wantSyntaxError && !tt.wantTypeError && !tt.wantValidationErr {
+				if err != nil {
+					t.Fatalf("json.Unmarshal(AIMessage) error = %v", err)
+				}
+				if !reflect.DeepEqual(got, tt.want) {
+					t.Errorf("decoded AIMessage = %#v, want %#v", got, tt.want)
+				}
+				return
+			}
+
+			if tt.wantSyntaxError {
+				var target *json.SyntaxError
+				if !errors.As(err, &target) {
+					t.Fatalf("json.Unmarshal(AIMessage) error = %v, want *json.SyntaxError", err)
+				}
+			}
+			if tt.wantTypeError {
+				var target *json.UnmarshalTypeError
+				if !errors.As(err, &target) {
+					t.Fatalf("json.Unmarshal(AIMessage) error = %v, want *json.UnmarshalTypeError", err)
+				}
+			}
+			if tt.wantValidationErr {
+				var target *content.UsageValidationError
+				if !errors.As(err, &target) {
+					t.Fatalf("json.Unmarshal(AIMessage) error = %v, want *content.UsageValidationError", err)
+				}
+			}
+			if !reflect.DeepEqual(got, content.AIMessage{}) {
+				t.Errorf("AIMessage after failed decode = %#v, want zero value", got)
+			}
+		})
+	}
+}
+
+func TestAIMessageJSONErrorBoundaries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                 string
+		run                  func() error
+		wantInvalidUnmarshal bool
+		wantValidationErr    bool
+	}{
+		{
+			name: "nil receiver returns typed invalid unmarshal error",
+			run: func() error {
+				var dst *content.AIMessage
+				return dst.UnmarshalJSON([]byte(`{"role":"assistant"}`))
+			},
+			wantInvalidUnmarshal: true,
+		},
+		{
+			name: "marshal rejects invalid reasoning metadata",
+			run: func() error {
+				_, err := json.Marshal(content.AIMessage{
+					Message: content.Message{Role: content.RoleAssistant},
+					Usage:   &content.Usage{OutputTokens: 1, ReasoningTokens: 2},
+				})
+				return err
+			},
+			wantValidationErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := tt.run()
+			if tt.wantInvalidUnmarshal {
+				var target *json.InvalidUnmarshalError
+				if !errors.As(err, &target) {
+					t.Fatalf("error = %v, want *json.InvalidUnmarshalError", err)
+				}
+			}
+			if tt.wantValidationErr {
+				var target *content.UsageValidationError
+				if !errors.As(err, &target) {
+					t.Fatalf("error = %v, want *content.UsageValidationError", err)
+				}
+			}
+		})
+	}
+}
+
+func FuzzAIMessageJSON(f *testing.F) {
+	seeds := []string{
+		`{"role":"assistant"}`,
+		`{"role":"assistant","usage":{}}`,
+		`{"role":"assistant","usage":{"InputTokens":8,"OutputTokens":5,"ReasoningTokens":3}}`,
+		`{"role":"assistant","blocks":[{"type":"text","Text":"hello"}]}`,
+		`{"role":"assistant","usage":{"ReasoningTokens":1}}`,
+		`{"role":"assistant","usage":"invalid"}`,
+		`{"role":"assistant","usage":`,
+	}
+	for _, seed := range seeds {
+		f.Add([]byte(seed))
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var message content.AIMessage
+		if err := message.UnmarshalJSON(data); err != nil {
+			return
+		}
+
+		encoded, err := message.MarshalJSON()
+		if err != nil {
+			t.Fatalf("MarshalJSON() after successful UnmarshalJSON() error = %v", err)
+		}
+		var restored content.AIMessage
+		if err := restored.UnmarshalJSON(encoded); err != nil {
+			t.Fatalf("UnmarshalJSON(MarshalJSON()) error = %v", err)
+		}
+	})
 }
