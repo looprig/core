@@ -2,6 +2,7 @@ package content_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/looprig/core/content"
@@ -257,6 +258,153 @@ func TestThinkingBlock(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestThinkingBlock_ProviderState verifies the provider-opaque state field is
+// data (json.RawMessage), is preserved byte-for-byte through NewThinkingBlock,
+// and is defensively copied so a caller mutating its input slice after
+// construction cannot mutate the retained block.
+func TestThinkingBlock_ProviderState(t *testing.T) {
+	t.Parallel()
+
+	original := json.RawMessage(`{"thoughtSignature":"opaque-bytes"}`)
+	input := append(json.RawMessage(nil), original...)
+
+	tb := content.NewThinkingBlock("thinking text", "sig_abc123", input, "test-provider")
+
+	// Mutate the caller's slice after construction.
+	input[2] = 'X'
+
+	if got, want := string(tb.ProviderState), string(original); got != want {
+		t.Errorf("ThinkingBlock.ProviderState mutated via caller input alias: got %q, want %q", got, want)
+	}
+}
+
+// TestThinkingBlock_ProviderState_Nil verifies a nil provider state stays nil
+// rather than becoming an empty non-nil slice.
+func TestThinkingBlock_ProviderState_Nil(t *testing.T) {
+	t.Parallel()
+
+	tb := content.NewThinkingBlock("thinking text", "", nil, "")
+	if tb.ProviderState != nil {
+		t.Errorf("ThinkingBlock.ProviderState = %v, want nil", tb.ProviderState)
+	}
+}
+
+// TestThinkingBlock_ProviderStateFormat_RoundTrip verifies ProviderStateFormat
+// round-trips byte-for-byte through MarshalBlock/UnmarshalBlock when set, and
+// is cleanly omitted from the wire encoding (via the same omitempty pattern as
+// ProviderState) when left empty.
+func TestThinkingBlock_ProviderStateFormat_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	t.Run("set", func(t *testing.T) {
+		t.Parallel()
+
+		tb := content.NewThinkingBlock(
+			"thinking text",
+			"sig_abc123",
+			json.RawMessage(`{"thoughtSignature":"opaque-bytes"}`),
+			"gemini",
+		)
+
+		data, err := content.MarshalBlock(tb)
+		if err != nil {
+			t.Fatalf("MarshalBlock() error = %v", err)
+		}
+
+		if !strings.Contains(string(data), `"ProviderStateFormat":"gemini"`) {
+			t.Errorf("MarshalBlock() = %s, want it to contain ProviderStateFormat:gemini", data)
+		}
+
+		decoded, err := content.UnmarshalBlock(data)
+		if err != nil {
+			t.Fatalf("UnmarshalBlock() error = %v", err)
+		}
+
+		got, ok := decoded.(*content.ThinkingBlock)
+		if !ok {
+			t.Fatalf("UnmarshalBlock() returned %T, want *content.ThinkingBlock", decoded)
+		}
+
+		if got.ProviderStateFormat != tb.ProviderStateFormat {
+			t.Errorf("round-tripped ProviderStateFormat = %q, want %q", got.ProviderStateFormat, tb.ProviderStateFormat)
+		}
+	})
+
+	t.Run("empty omitted", func(t *testing.T) {
+		t.Parallel()
+
+		tb := content.NewThinkingBlock("thinking text", "sig_abc123", nil, "")
+
+		data, err := content.MarshalBlock(tb)
+		if err != nil {
+			t.Fatalf("MarshalBlock() error = %v", err)
+		}
+
+		if strings.Contains(string(data), "ProviderStateFormat") {
+			t.Errorf("MarshalBlock() = %s, want ProviderStateFormat omitted when empty", data)
+		}
+
+		decoded, err := content.UnmarshalBlock(data)
+		if err != nil {
+			t.Fatalf("UnmarshalBlock() error = %v", err)
+		}
+
+		got, ok := decoded.(*content.ThinkingBlock)
+		if !ok {
+			t.Fatalf("UnmarshalBlock() returned %T, want *content.ThinkingBlock", decoded)
+		}
+
+		if got.ProviderStateFormat != "" {
+			t.Errorf("round-tripped ProviderStateFormat = %q, want empty", got.ProviderStateFormat)
+		}
+	})
+}
+
+// TestThinkingBlock_ReplayableAs verifies the "treat as absent" degrade
+// documented on ProviderStateFormat: a nil receiver, an empty ProviderState,
+// or a ProviderStateFormat that does not exactly match the queried format
+// must all report false, and only an exact match with non-empty
+// ProviderState reports true.
+func TestThinkingBlock_ReplayableAs(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil receiver", func(t *testing.T) {
+		t.Parallel()
+
+		var tb *content.ThinkingBlock
+		if got := tb.ReplayableAs("gemini"); got {
+			t.Errorf("ReplayableAs() on nil receiver = %v, want false", got)
+		}
+	})
+
+	t.Run("matching format", func(t *testing.T) {
+		t.Parallel()
+
+		tb := content.NewThinkingBlock("thinking text", "", json.RawMessage(`"opaque"`), "gemini")
+		if got := tb.ReplayableAs("gemini"); !got {
+			t.Errorf("ReplayableAs(gemini) = %v, want true", got)
+		}
+	})
+
+	t.Run("non-matching format", func(t *testing.T) {
+		t.Parallel()
+
+		tb := content.NewThinkingBlock("thinking text", "", json.RawMessage(`"opaque"`), "gemini")
+		if got := tb.ReplayableAs("openai-responses"); got {
+			t.Errorf("ReplayableAs(openai-responses) = %v, want false (format tagged gemini)", got)
+		}
+	})
+
+	t.Run("empty ProviderState with matching format still false", func(t *testing.T) {
+		t.Parallel()
+
+		tb := &content.ThinkingBlock{ProviderStateFormat: "gemini"}
+		if got := tb.ReplayableAs("gemini"); got {
+			t.Errorf("ReplayableAs(gemini) = %v, want false (ProviderState empty)", got)
+		}
+	})
 }
 
 // TestToolUseBlock verifies ToolUseBlock: ID, Name, Input fields.
