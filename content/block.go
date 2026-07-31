@@ -70,23 +70,40 @@ type DocumentBlock struct {
 // against the provider that issued it. Construct via NewThinkingBlock so the
 // bytes are defensively copied; a bare struct literal aliases the caller's
 // slice.
+//
+// ProviderStateFormat is an opaque, codec-chosen label identifying which
+// dialect encoded ProviderState (for example "gemini" or "openai-responses").
+// It is meaningless and unset whenever ProviderState is empty. This field
+// exists to satisfy the inference gateway's first-milestone requirement that
+// opaque replay state is never translated across provider dialects (see
+// docs/plans/2026-07-31-inference-gateway-design.md, "Thinking" section):
+// a codec MUST NEVER replay ProviderState toward a wire field it owns unless
+// ProviderStateFormat equals that codec's own label; otherwise it MUST treat
+// ProviderState as absent. This is the load-bearing invariant that prevents
+// one provider's opaque bytes (e.g. a Gemini thoughtSignature) from being
+// forwarded to a different provider (e.g. as an OpenAI Responses
+// encrypted_content) as if it were that provider's own native state.
 type ThinkingBlock struct {
-	Thinking      string
-	Signature     string
-	ProviderState json.RawMessage `json:"ProviderState,omitempty"`
+	Thinking            string
+	Signature           string
+	ProviderState       json.RawMessage `json:"ProviderState,omitempty"`
+	ProviderStateFormat string          `json:"ProviderStateFormat,omitempty"`
 }
 
 // NewThinkingBlock builds a ThinkingBlock, defensively copying providerState so
 // the caller cannot mutate the retained block through its input slice.
-func NewThinkingBlock(thinking, signature string, providerState json.RawMessage) *ThinkingBlock {
+// providerStateFormat tags which dialect encoded providerState; see the
+// ThinkingBlock doc comment for the invariant this enforces.
+func NewThinkingBlock(thinking, signature string, providerState json.RawMessage, providerStateFormat string) *ThinkingBlock {
 	var state json.RawMessage
 	if providerState != nil {
 		state = append(json.RawMessage(nil), providerState...)
 	}
 	return &ThinkingBlock{
-		Thinking:      thinking,
-		Signature:     signature,
-		ProviderState: state,
+		Thinking:            thinking,
+		Signature:           signature,
+		ProviderState:       state,
+		ProviderStateFormat: providerStateFormat,
 	}
 }
 

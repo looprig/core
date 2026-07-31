@@ -36,6 +36,7 @@ func TestBlockCodecRoundTrip(t *testing.T) {
 				"I think...",
 				"sig_123",
 				json.RawMessage(`{"thoughtSignature":"gAAAAA...opaque"}`),
+				"test-provider",
 			),
 		},
 		{
