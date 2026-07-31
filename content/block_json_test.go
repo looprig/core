@@ -31,6 +31,14 @@ func TestBlockCodecRoundTrip(t *testing.T) {
 			in:   &content.ThinkingBlock{Thinking: "I think...", Signature: "sig_123"},
 		},
 		{
+			name: "thinking block with provider-opaque state",
+			in: content.NewThinkingBlock(
+				"I think...",
+				"sig_123",
+				json.RawMessage(`{"thoughtSignature":"gAAAAA...opaque"}`),
+			),
+		},
+		{
 			name: "image block with URL source",
 			in:   &content.ImageBlock{MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{URL: "https://example.com/a.png"}},
 		},

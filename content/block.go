@@ -63,9 +63,31 @@ type DocumentBlock struct {
 
 // ThinkingBlock carries model reasoning text.
 // Signature is empty during streaming and non-empty only on a complete block.
+//
+// ProviderState carries provider-private opaque reasoning state (for example
+// an Anthropic thinking signature or a Gemini thoughtSignature) that this
+// package never interprets. It is meaningful only for a same-dialect replay
+// against the provider that issued it. Construct via NewThinkingBlock so the
+// bytes are defensively copied; a bare struct literal aliases the caller's
+// slice.
 type ThinkingBlock struct {
-	Thinking  string
-	Signature string
+	Thinking      string
+	Signature     string
+	ProviderState json.RawMessage `json:"ProviderState,omitempty"`
+}
+
+// NewThinkingBlock builds a ThinkingBlock, defensively copying providerState so
+// the caller cannot mutate the retained block through its input slice.
+func NewThinkingBlock(thinking, signature string, providerState json.RawMessage) *ThinkingBlock {
+	var state json.RawMessage
+	if providerState != nil {
+		state = append(json.RawMessage(nil), providerState...)
+	}
+	return &ThinkingBlock{
+		Thinking:      thinking,
+		Signature:     signature,
+		ProviderState: state,
+	}
 }
 
 type ToolUseBlock struct {

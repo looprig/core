@@ -259,6 +259,37 @@ func TestThinkingBlock(t *testing.T) {
 	}
 }
 
+// TestThinkingBlock_ProviderState verifies the provider-opaque state field is
+// data (json.RawMessage), is preserved byte-for-byte through NewThinkingBlock,
+// and is defensively copied so a caller mutating its input slice after
+// construction cannot mutate the retained block.
+func TestThinkingBlock_ProviderState(t *testing.T) {
+	t.Parallel()
+
+	original := json.RawMessage(`{"thoughtSignature":"opaque-bytes"}`)
+	input := append(json.RawMessage(nil), original...)
+
+	tb := content.NewThinkingBlock("thinking text", "sig_abc123", input)
+
+	// Mutate the caller's slice after construction.
+	input[2] = 'X'
+
+	if got, want := string(tb.ProviderState), string(original); got != want {
+		t.Errorf("ThinkingBlock.ProviderState mutated via caller input alias: got %q, want %q", got, want)
+	}
+}
+
+// TestThinkingBlock_ProviderState_Nil verifies a nil provider state stays nil
+// rather than becoming an empty non-nil slice.
+func TestThinkingBlock_ProviderState_Nil(t *testing.T) {
+	t.Parallel()
+
+	tb := content.NewThinkingBlock("thinking text", "", nil)
+	if tb.ProviderState != nil {
+		t.Errorf("ThinkingBlock.ProviderState = %v, want nil", tb.ProviderState)
+	}
+}
+
 // TestToolUseBlock verifies ToolUseBlock: ID, Name, Input fields.
 func TestToolUseBlock(t *testing.T) {
 	t.Parallel()
