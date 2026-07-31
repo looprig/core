@@ -107,6 +107,17 @@ func NewThinkingBlock(thinking, signature string, providerState json.RawMessage,
 	}
 }
 
+// ReplayableAs reports whether b carries provider-opaque state safe to
+// replay toward a wire field owned by the dialect labeled format. False for
+// a nil receiver, an empty ProviderState, or a ProviderStateFormat that does
+// not exactly match format — the same "treat as absent" degrade every caller
+// of this method must already apply on a false result. See the
+// ProviderStateFormat field doc for the cross-dialect-replay invariant this
+// method exists to let every call site enforce identically.
+func (b *ThinkingBlock) ReplayableAs(format string) bool {
+	return b != nil && len(b.ProviderState) > 0 && b.ProviderStateFormat == format
+}
+
 type ToolUseBlock struct {
 	ID    string
 	Name  string

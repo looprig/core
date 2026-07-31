@@ -362,6 +362,51 @@ func TestThinkingBlock_ProviderStateFormat_RoundTrip(t *testing.T) {
 	})
 }
 
+// TestThinkingBlock_ReplayableAs verifies the "treat as absent" degrade
+// documented on ProviderStateFormat: a nil receiver, an empty ProviderState,
+// or a ProviderStateFormat that does not exactly match the queried format
+// must all report false, and only an exact match with non-empty
+// ProviderState reports true.
+func TestThinkingBlock_ReplayableAs(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil receiver", func(t *testing.T) {
+		t.Parallel()
+
+		var tb *content.ThinkingBlock
+		if got := tb.ReplayableAs("gemini"); got {
+			t.Errorf("ReplayableAs() on nil receiver = %v, want false", got)
+		}
+	})
+
+	t.Run("matching format", func(t *testing.T) {
+		t.Parallel()
+
+		tb := content.NewThinkingBlock("thinking text", "", json.RawMessage(`"opaque"`), "gemini")
+		if got := tb.ReplayableAs("gemini"); !got {
+			t.Errorf("ReplayableAs(gemini) = %v, want true", got)
+		}
+	})
+
+	t.Run("non-matching format", func(t *testing.T) {
+		t.Parallel()
+
+		tb := content.NewThinkingBlock("thinking text", "", json.RawMessage(`"opaque"`), "gemini")
+		if got := tb.ReplayableAs("openai-responses"); got {
+			t.Errorf("ReplayableAs(openai-responses) = %v, want false (format tagged gemini)", got)
+		}
+	})
+
+	t.Run("empty ProviderState with matching format still false", func(t *testing.T) {
+		t.Parallel()
+
+		tb := &content.ThinkingBlock{ProviderStateFormat: "gemini"}
+		if got := tb.ReplayableAs("gemini"); got {
+			t.Errorf("ReplayableAs(gemini) = %v, want false (ProviderState empty)", got)
+		}
+	})
+}
+
 // TestToolUseBlock verifies ToolUseBlock: ID, Name, Input fields.
 func TestToolUseBlock(t *testing.T) {
 	t.Parallel()
