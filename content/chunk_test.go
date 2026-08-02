@@ -16,6 +16,7 @@ func TestChunk_ConcretePayloads(t *testing.T) {
 		chunk     content.Chunk
 		wantText  string               // expected text for a *TextChunk
 		wantThink string               // expected thinking for a *ThinkingChunk
+		wantSig   string               // expected signature for a *ThinkingChunk
 		wantTool  content.ToolUseChunk // expected fields for a *ToolUseChunk
 	}{
 		{
@@ -25,8 +26,9 @@ func TestChunk_ConcretePayloads(t *testing.T) {
 		},
 		{
 			name:      "thinking chunk carries thinking payload",
-			chunk:     &content.ThinkingChunk{Thinking: "reasoning"},
+			chunk:     &content.ThinkingChunk{Thinking: "reasoning", Signature: "sig"},
 			wantThink: "reasoning",
+			wantSig:   "sig",
 		},
 		{
 			name:     "text chunk with empty string is a valid delta",
@@ -62,6 +64,9 @@ func TestChunk_ConcretePayloads(t *testing.T) {
 			case *content.ThinkingChunk:
 				if c.Thinking != tt.wantThink {
 					t.Errorf("ThinkingChunk.Thinking = %q, want %q", c.Thinking, tt.wantThink)
+				}
+				if c.Signature != tt.wantSig {
+					t.Errorf("ThinkingChunk.Signature = %q, want %q", c.Signature, tt.wantSig)
 				}
 			case *content.ToolUseChunk:
 				if *c != tt.wantTool {

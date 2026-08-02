@@ -236,6 +236,14 @@ func TestThinking(t *testing.T) {
 			},
 			want: &content.ThinkingBlock{Thinking: "step one two", Signature: ""},
 		},
+		{
+			name: "signature-only delta is retained",
+			chunks: []*content.ThinkingChunk{
+				{Thinking: "reasoning"},
+				{Signature: "sig"},
+			},
+			want: &content.ThinkingBlock{Thinking: "reasoning", Signature: "sig"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -249,9 +257,6 @@ func TestThinking(t *testing.T) {
 			got := acc.Block()
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Block() = %#v, want %#v", got, tt.want)
-			}
-			if got != nil && got.Signature != "" {
-				t.Errorf("Block().Signature = %q, want empty (conscious omission)", got.Signature)
 			}
 		})
 	}
