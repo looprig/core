@@ -14,9 +14,10 @@ type examplesManifest struct {
 	SchemaVersion int    `json:"schemaVersion"`
 	Repository    string `json:"repository"`
 	ProofSources  []struct {
-		ID   string `json:"id"`
-		Type string `json:"type"`
-		Path string `json:"path"`
+		ID     string `json:"id"`
+		Type   string `json:"type"`
+		Path   string `json:"path"`
+		Symbol string `json:"symbol,omitempty"`
 	} `json:"proofSources"`
 	Examples []struct {
 		ID             string            `json:"id"`
@@ -70,12 +71,38 @@ func TestDocsExamplesArtifacts(t *testing.T) {
 	if decoded.SchemaVersion != 1 || decoded.Repository != "core" {
 		t.Fatalf("manifest identity = schema %d repository %q", decoded.SchemaVersion, decoded.Repository)
 	}
+	wantProofs := map[string]struct {
+		typeName string
+		path     string
+		symbol   string
+	}{
+		"example-core-content-messages-fixture":    {"executable-fixture", "examples/content/example_test.go", "Example_blocksAndMessages"},
+		"example-core-stream-accumulation-fixture": {"executable-fixture", "examples/streaming/example_test.go", "Example_accumulateChunks"},
+		"example-core-usage-accounting-fixture":    {"executable-fixture", "examples/usage/example_test.go", "Example_usageAccounting"},
+		"example-core-structured-logging-fixture":  {"executable-fixture", "examples/logging/example_test.go", "Example_structuredLogger"},
+		"example-core-uuid-encoding-fixture":       {"executable-fixture", "examples/uuid/example_test.go", "Example_parseAndEncode"},
+		"example-core-manifest-contract-test":      {"test", "tests/example_test.go", "TestDocsExamplesArtifacts"},
+	}
 	proofs := make(map[string]bool, len(decoded.ProofSources))
 	for _, proof := range decoded.ProofSources {
-		if proof.ID == "" || proof.Type == "" || proof.Path == "" {
-			t.Errorf("incomplete proof source: %#v", proof)
+		want, ok := wantProofs[proof.ID]
+		if !ok {
+			t.Errorf("unexpected proof source ID %q", proof.ID)
+			continue
+		}
+		if proof.Type != want.typeName || proof.Path != want.path || proof.Symbol != want.symbol {
+			t.Errorf("proof %q = type %q path %q symbol %q, want type %q path %q symbol %q", proof.ID, proof.Type, proof.Path, proof.Symbol, want.typeName, want.path, want.symbol)
+		}
+		if strings.Contains(proof.Path, "#") {
+			t.Errorf("proof %q path contains symbol fragment: %q", proof.ID, proof.Path)
+		}
+		if _, err := os.Stat(filepath.Join("..", proof.Path)); err != nil {
+			t.Errorf("proof %q path does not resolve: %v", proof.ID, err)
 		}
 		proofs[proof.ID] = true
+	}
+	if len(decoded.ProofSources) != len(wantProofs) {
+		t.Errorf("proof source count = %d, want %d", len(decoded.ProofSources), len(wantProofs))
 	}
 	if len(decoded.Examples) != 5 {
 		t.Fatalf("manifest examples = %d, want 5", len(decoded.Examples))
