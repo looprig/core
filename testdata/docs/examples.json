@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "repository": "core",
+  "proofSources": [
+    {
+      "id": "proof-core-content-example",
+      "type": "go-example",
+      "path": "examples/content/example_test.go#Example_blocksAndMessages"
+    },
+    {
+      "id": "proof-core-streaming-example",
+      "type": "go-example",
+      "path": "examples/streaming/example_test.go#Example_accumulateChunks"
+    },
+    {
+      "id": "proof-core-usage-example",
+      "type": "go-example",
+      "path": "examples/usage/example_test.go#Example_usageAccounting"
+    },
+    {
+      "id": "proof-core-logging-example",
+      "type": "go-example",
+      "path": "examples/logging/example_test.go#Example_structuredLogger"
+    },
+    {
+      "id": "proof-core-uuid-example",
+      "type": "go-example",
+      "path": "examples/uuid/example_test.go#Example_parseAndEncode"
+    },
+    {
+      "id": "proof-core-examples-contract-test",
+      "type": "go-test",
+      "path": "tests/example_test.go#TestDocsExamplesArtifacts"
+    }
+  ],
+  "examples": [
+    {
+      "id": "example-core-content-messages-example",
+      "ecosystem": "go",
+      "owner": "core",
+      "sourcePath": "examples/content/example_test.go",
+      "availability": "source-workspace",
+      "versions": {
+        "github.com/looprig/core": "source-workspace"
+      },
+      "offlineCommand": "GOWORK=off GOCACHE=/tmp/looprig-core-docs-gocache go test ./examples/...",
+      "assertion": "Go example output proves typed message access and tagged document block JSON round-trip.",
+      "workflowPath": ".github/workflows/docs-examples.yml",
+      "jobId": "docs-examples",
+      "cleanup": "No cleanup required; the example uses in-memory values only.",
+      "liveGate": null,
+      "proofIds": [
+        "proof-core-content-example",
+        "proof-core-examples-contract-test"
+      ]
+    },
+    {
+      "id": "example-core-stream-accumulation-example",
+      "ecosystem": "go",
+      "owner": "core",
+      "sourcePath": "examples/streaming/example_test.go",
+      "availability": "source-workspace",
+      "versions": {
+        "github.com/looprig/core": "source-workspace"
+      },
+      "offlineCommand": "GOWORK=off GOCACHE=/tmp/looprig-core-docs-gocache go test ./examples/...",
+      "assertion": "Go example output proves text, thinking, and fragmented tool-call chunks accumulate into complete values.",
+      "workflowPath": ".github/workflows/docs-examples.yml",
+      "jobId": "docs-examples",
+      "cleanup": "No cleanup required; all accumulators are process-local values.",
+      "liveGate": null,
+      "proofIds": [
+        "proof-core-streaming-example",
+        "proof-core-examples-contract-test"
+      ]
+    },
+    {
+      "id": "example-core-usage-accounting-example",
+      "ecosystem": "go",
+      "owner": "core",
+      "sourcePath": "examples/usage/example_test.go",
+      "availability": "source-workspace",
+      "versions": {
+        "github.com/looprig/core": "source-workspace"
+      },
+      "offlineCommand": "GOWORK=off GOCACHE=/tmp/looprig-core-docs-gocache go test ./examples/...",
+      "assertion": "Go example output proves usage addition, derived token totals, and typed validation errors.",
+      "workflowPath": ".github/workflows/docs-examples.yml",
+      "jobId": "docs-examples",
+      "cleanup": "No cleanup required; usage accounting is a pure in-memory operation.",
+      "liveGate": null,
+      "proofIds": [
+        "proof-core-usage-example",
+        "proof-core-examples-contract-test"
+      ]
+    },
+    {
+      "id": "example-core-structured-logging-example",
+      "ecosystem": "go",
+      "owner": "core",
+      "sourcePath": "examples/logging/example_test.go",
+      "availability": "source-workspace",
+      "versions": {
+        "github.com/looprig/core": "source-workspace"
+      },
+      "offlineCommand": "GOWORK=off GOCACHE=/tmp/looprig-core-docs-gocache go test ./examples/...",
+      "assertion": "Go example output proves level parsing and structured JSON log fields without relying on timestamps or source locations.",
+      "workflowPath": ".github/workflows/docs-examples.yml",
+      "jobId": "docs-examples",
+      "cleanup": "No cleanup required; log output is retained in an in-memory buffer.",
+      "liveGate": null,
+      "proofIds": [
+        "proof-core-logging-example",
+        "proof-core-examples-contract-test"
+      ]
+    },
+    {
+      "id": "example-core-uuid-encoding-example",
+      "ecosystem": "go",
+      "owner": "core",
+      "sourcePath": "examples/uuid/example_test.go",
+      "availability": "source-workspace",
+      "versions": {
+        "github.com/looprig/core": "source-workspace"
+      },
+      "offlineCommand": "GOWORK=off GOCACHE=/tmp/looprig-core-docs-gocache go test ./examples/...",
+      "assertion": "Go example output proves case-insensitive parsing, canonical formatting, and JSON text encoding.",
+      "workflowPath": ".github/workflows/docs-examples.yml",
+      "jobId": "docs-examples",
+      "cleanup": "No cleanup required; UUID parsing and encoding are in-memory operations.",
+      "liveGate": null,
+      "proofIds": [
+        "proof-core-uuid-example",
+        "proof-core-examples-contract-test"
+      ]
+    }
+  ]
+}
