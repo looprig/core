@@ -1,5 +1,7 @@
 package content
 
+import "encoding/json"
+
 // Chunk is the sealed interface over streaming content deltas. Separate from
 // Block because complete blocks have fields that may arrive as terminal deltas
 // (for example, a reasoning signature). Chunks are never serialized, so there
@@ -12,12 +14,16 @@ func (*ToolUseChunk) isChunk()  {}
 
 type TextChunk struct{ Text string }
 
-// ThinkingChunk carries a reasoning-text or reasoning-signature delta. Bedrock
-// emits the signature as a separate delta and requires it to be replayed with
-// the accumulated reasoning text.
+// ThinkingChunk carries a reasoning-text, reasoning-signature, or opaque
+// provider-state delta. ProviderState and ProviderStateFormat have the same
+// replay-scoping semantics as ThinkingBlock: codecs must only replay state
+// whose format matches their own dialect. The stream accumulator defensively
+// copies ProviderState before retaining it.
 type ThinkingChunk struct {
-	Thinking  string
-	Signature string
+	Thinking            string
+	Signature           string
+	ProviderState       json.RawMessage
+	ProviderStateFormat string
 }
 
 // ToolUseChunk is a streaming delta of a tool call. Providers emit these as they

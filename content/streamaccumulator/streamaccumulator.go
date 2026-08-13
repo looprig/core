@@ -24,9 +24,11 @@ import (
 // Thinking folds streamed ThinkingChunk deltas into a single ThinkingBlock.
 // The zero value is ready to use.
 type Thinking struct {
-	builder   strings.Builder
-	signature string
-	received  bool
+	builder             strings.Builder
+	signature           string
+	providerState       json.RawMessage
+	providerStateFormat string
+	received            bool
 }
 
 // Add appends one thinking delta to the accumulator.
@@ -36,6 +38,10 @@ func (a *Thinking) Add(chunk *content.ThinkingChunk) {
 	if chunk.Signature != "" {
 		a.signature = chunk.Signature
 	}
+	if len(chunk.ProviderState) > 0 {
+		a.providerState = append(a.providerState[:0], chunk.ProviderState...)
+		a.providerStateFormat = chunk.ProviderStateFormat
+	}
 }
 
 // Block returns the accumulated ThinkingBlock, or nil if no chunk was received.
@@ -43,7 +49,12 @@ func (a Thinking) Block() *content.ThinkingBlock {
 	if !a.received {
 		return nil
 	}
-	return &content.ThinkingBlock{Thinking: a.builder.String(), Signature: a.signature}
+	return content.NewThinkingBlock(
+		a.builder.String(),
+		a.signature,
+		a.providerState,
+		a.providerStateFormat,
+	)
 }
 
 // Empty reports whether no chunk has been added yet.

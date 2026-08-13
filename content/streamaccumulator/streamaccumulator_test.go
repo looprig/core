@@ -1,6 +1,7 @@
 package streamaccumulator_test
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -259,6 +260,50 @@ func TestThinking(t *testing.T) {
 				t.Errorf("Block() = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestThinkingPreservesProviderStateWithoutAliasing(t *testing.T) {
+	t.Parallel()
+
+	firstState := json.RawMessage(`{"encrypted_content":"first"}`)
+	finalState := json.RawMessage(`{"encrypted_content":"final"}`)
+	var acc streamaccumulator.Thinking
+	acc.Add(&content.ThinkingChunk{
+		Thinking:            "reasoning",
+		ProviderState:       firstState,
+		ProviderStateFormat: "openai-responses",
+	})
+	acc.Add(&content.ThinkingChunk{
+		Signature:           "sig",
+		ProviderState:       finalState,
+		ProviderStateFormat: "openai-responses",
+	})
+
+	// Mutating the source after Add must not alter the accumulated state.
+	for i := range finalState {
+		finalState[i] = 'x'
+	}
+	got := acc.Block()
+	wantState := `{"encrypted_content":"final"}`
+	if got.Thinking != "reasoning" || got.Signature != "sig" {
+		t.Fatalf("Block() text/signature = (%q, %q), want (%q, %q)", got.Thinking, got.Signature, "reasoning", "sig")
+	}
+	if string(got.ProviderState) != wantState {
+		t.Fatalf("Block().ProviderState = %q, want %q", got.ProviderState, wantState)
+	}
+	if got.ProviderStateFormat != "openai-responses" {
+		t.Fatalf("Block().ProviderStateFormat = %q, want %q", got.ProviderStateFormat, "openai-responses")
+	}
+
+	// Mutating one returned block must not alter a later Block result.
+	got.ProviderState[0] = 'x'
+	again := acc.Block()
+	if string(again.ProviderState) != wantState {
+		t.Fatalf("second Block().ProviderState = %q, want independent copy %q", again.ProviderState, wantState)
+	}
+	if !again.ReplayableAs("openai-responses") || again.ReplayableAs("gemini") {
+		t.Fatalf("replay scope = matching:%v foreign:%v, want true/false", again.ReplayableAs("openai-responses"), again.ReplayableAs("gemini"))
 	}
 }
 
