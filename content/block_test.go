@@ -405,6 +405,37 @@ func TestThinkingBlock_ReplayableAs(t *testing.T) {
 			t.Errorf("ReplayableAs(gemini) = %v, want false (ProviderState empty)", got)
 		}
 	})
+
+	t.Run("empty requested format is never replayable", func(t *testing.T) {
+		t.Parallel()
+
+		tb := &content.ThinkingBlock{ProviderState: json.RawMessage(`"opaque"`)}
+		if got := tb.ReplayableAs(""); got {
+			t.Errorf("ReplayableAs(empty) = %v, want false", got)
+		}
+	})
+}
+
+func TestNewThinkingBlockNormalizesIncompleteProviderStatePair(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		state  json.RawMessage
+		format string
+	}{
+		{name: "state without format", state: json.RawMessage(`"opaque"`)},
+		{name: "format without state", format: "gemini"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := content.NewThinkingBlock("thinking", "sig", tt.state, tt.format)
+			if got.ProviderState != nil || got.ProviderStateFormat != "" {
+				t.Fatalf("provider state pair = (%q, %q), want normalized nil/empty", got.ProviderState, got.ProviderStateFormat)
+			}
+		})
+	}
 }
 
 // TestToolUseBlock verifies ToolUseBlock: ID, Name, Input fields.
@@ -466,6 +497,57 @@ func TestToolUseBlock(t *testing.T) {
 				t.Errorf("ToolUseBlock.Input = %q, want %q", tt.block.Input, tt.wantInput)
 			}
 		})
+	}
+}
+
+func TestNewToolUseBlockDefensivelyCopiesRawMessages(t *testing.T) {
+	t.Parallel()
+
+	input := json.RawMessage(`{"query":"go"}`)
+	state := json.RawMessage(`{"thoughtSignature":"opaque"}`)
+	got := content.NewToolUseBlock("call_1", "search", input, state, "gemini")
+	input[0] = 'x'
+	state[0] = 'x'
+
+	if string(got.Input) != `{"query":"go"}` {
+		t.Fatalf("NewToolUseBlock().Input = %q, want defensive copy", got.Input)
+	}
+	if string(got.ProviderState) != `{"thoughtSignature":"opaque"}` {
+		t.Fatalf("NewToolUseBlock().ProviderState = %q, want defensive copy", got.ProviderState)
+	}
+	if !got.ReplayableAs("gemini") || got.ReplayableAs("anthropic") {
+		t.Fatalf("replay scope = matching:%v foreign:%v, want true/false", got.ReplayableAs("gemini"), got.ReplayableAs("anthropic"))
+	}
+}
+
+func TestNewToolUseBlockNormalizesIncompleteProviderStatePair(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		state  json.RawMessage
+		format string
+	}{
+		{name: "state without format", state: json.RawMessage(`"opaque"`)},
+		{name: "format without state", format: "gemini"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := content.NewToolUseBlock("call_1", "search", json.RawMessage(`{}`), tt.state, tt.format)
+			if got.ProviderState != nil || got.ProviderStateFormat != "" {
+				t.Fatalf("provider state pair = (%q, %q), want normalized nil/empty", got.ProviderState, got.ProviderStateFormat)
+			}
+		})
+	}
+}
+
+func TestToolUseBlockReplayableAsRejectsEmptyRequestedFormat(t *testing.T) {
+	t.Parallel()
+
+	block := &content.ToolUseBlock{ProviderState: json.RawMessage(`"opaque"`)}
+	if got := block.ReplayableAs(""); got {
+		t.Fatalf("ReplayableAs(empty) = %v, want false", got)
 	}
 }
 

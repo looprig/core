@@ -38,7 +38,7 @@ func (a *Thinking) Add(chunk *content.ThinkingChunk) {
 	if chunk.Signature != "" {
 		a.signature = chunk.Signature
 	}
-	if len(chunk.ProviderState) > 0 {
+	if len(chunk.ProviderState) > 0 && chunk.ProviderStateFormat != "" {
 		a.providerState = append(a.providerState[:0], chunk.ProviderState...)
 		a.providerStateFormat = chunk.ProviderStateFormat
 	}
@@ -97,9 +97,11 @@ type ToolUses struct {
 }
 
 type toolPart struct {
-	id    string
-	name  string
-	input strings.Builder
+	id                  string
+	name                string
+	input               strings.Builder
+	providerState       json.RawMessage
+	providerStateFormat string
 }
 
 // Add folds one delta into the accumulator, bounds-safe on any Index value.
@@ -121,6 +123,10 @@ func (a *ToolUses) Add(chunk *content.ToolUseChunk) {
 	if chunk.Name != "" {
 		p.name = chunk.Name
 	}
+	if len(chunk.ProviderState) > 0 && chunk.ProviderStateFormat != "" {
+		p.providerState = append(p.providerState[:0], chunk.ProviderState...)
+		p.providerStateFormat = chunk.ProviderStateFormat
+	}
 	p.input.WriteString(chunk.InputJSON)
 }
 
@@ -137,11 +143,13 @@ func (a ToolUses) Blocks() []content.ToolUseBlock {
 	out := make([]content.ToolUseBlock, 0, len(idx))
 	for _, i := range idx {
 		p := a.parts[i]
-		out = append(out, content.ToolUseBlock{
-			ID:    p.id,
-			Name:  p.name,
-			Input: json.RawMessage(p.input.String()),
-		})
+		out = append(out, *content.NewToolUseBlock(
+			p.id,
+			p.name,
+			json.RawMessage(p.input.String()),
+			p.providerState,
+			p.providerStateFormat,
+		))
 	}
 	return out
 }

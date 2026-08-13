@@ -96,8 +96,10 @@ type ThinkingBlock struct {
 // ThinkingBlock doc comment for the invariant this enforces.
 func NewThinkingBlock(thinking, signature string, providerState json.RawMessage, providerStateFormat string) *ThinkingBlock {
 	var state json.RawMessage
-	if providerState != nil {
+	if len(providerState) > 0 && providerStateFormat != "" {
 		state = append(json.RawMessage(nil), providerState...)
+	} else {
+		providerStateFormat = ""
 	}
 	return &ThinkingBlock{
 		Thinking:            thinking,
@@ -115,13 +117,44 @@ func NewThinkingBlock(thinking, signature string, providerState json.RawMessage,
 // ProviderStateFormat field doc for the cross-dialect-replay invariant this
 // method exists to let every call site enforce identically.
 func (b *ThinkingBlock) ReplayableAs(format string) bool {
-	return b != nil && len(b.ProviderState) > 0 && b.ProviderStateFormat == format
+	return b != nil && format != "" && len(b.ProviderState) > 0 && b.ProviderStateFormat != "" && b.ProviderStateFormat == format
 }
 
 type ToolUseBlock struct {
-	ID    string
-	Name  string
-	Input json.RawMessage
+	ID                  string
+	Name                string
+	Input               json.RawMessage
+	ProviderState       json.RawMessage `json:"ProviderState,omitempty"`
+	ProviderStateFormat string          `json:"ProviderStateFormat,omitempty"`
+}
+
+// NewToolUseBlock builds a ToolUseBlock, defensively copying both raw-message
+// inputs so callers cannot mutate the retained block through their slices.
+// ProviderStateFormat scopes providerState to its issuing codec dialect.
+func NewToolUseBlock(id, name string, input, providerState json.RawMessage, providerStateFormat string) *ToolUseBlock {
+	var inputCopy json.RawMessage
+	if input != nil {
+		inputCopy = append(json.RawMessage(nil), input...)
+	}
+	var stateCopy json.RawMessage
+	if len(providerState) > 0 && providerStateFormat != "" {
+		stateCopy = append(json.RawMessage(nil), providerState...)
+	} else {
+		providerStateFormat = ""
+	}
+	return &ToolUseBlock{
+		ID:                  id,
+		Name:                name,
+		Input:               inputCopy,
+		ProviderState:       stateCopy,
+		ProviderStateFormat: providerStateFormat,
+	}
+}
+
+// ReplayableAs reports whether b carries provider-opaque state safe to replay
+// toward a wire field owned by the dialect labeled format.
+func (b *ToolUseBlock) ReplayableAs(format string) bool {
+	return b != nil && format != "" && len(b.ProviderState) > 0 && b.ProviderStateFormat != "" && b.ProviderStateFormat == format
 }
 
 // ToolResultBlock nests its own []Block, so it implements json.Marshaler /

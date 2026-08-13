@@ -97,6 +97,72 @@ func TestToolUses(t *testing.T) {
 	}
 }
 
+func TestToolUsesPreservesProviderStateWithoutAliasing(t *testing.T) {
+	t.Parallel()
+
+	firstState := json.RawMessage(`{"thoughtSignature":"first"}`)
+	finalState := json.RawMessage(`{"thoughtSignature":"final"}`)
+	var acc streamaccumulator.ToolUses
+	acc.Add(&content.ToolUseChunk{
+		Index:               0,
+		ID:                  "call_1",
+		Name:                "search",
+		InputJSON:           `{"q":`,
+		ProviderState:       firstState,
+		ProviderStateFormat: "gemini",
+	})
+	acc.Add(&content.ToolUseChunk{
+		Index:               0,
+		InputJSON:           `"go"}`,
+		ProviderState:       finalState,
+		ProviderStateFormat: "gemini",
+	})
+
+	for i := range finalState {
+		finalState[i] = 'x'
+	}
+	got := acc.Blocks()
+	if len(got) != 1 {
+		t.Fatalf("len(Blocks()) = %d, want 1", len(got))
+	}
+	if got[0].ID != "call_1" || got[0].Name != "search" || string(got[0].Input) != `{"q":"go"}` {
+		t.Fatalf("Blocks()[0] identity/input = (%q, %q, %q), want (%q, %q, %q)", got[0].ID, got[0].Name, got[0].Input, "call_1", "search", `{"q":"go"}`)
+	}
+	wantState := `{"thoughtSignature":"final"}`
+	if string(got[0].ProviderState) != wantState || got[0].ProviderStateFormat != "gemini" {
+		t.Fatalf("Blocks()[0] provider state = (%q, %q), want (%q, %q)", got[0].ProviderState, got[0].ProviderStateFormat, wantState, "gemini")
+	}
+
+	got[0].ProviderState[0] = 'x'
+	again := acc.Blocks()
+	if string(again[0].ProviderState) != wantState {
+		t.Fatalf("second Blocks()[0].ProviderState = %q, want independent copy %q", again[0].ProviderState, wantState)
+	}
+	if !again[0].ReplayableAs("gemini") || again[0].ReplayableAs("openai-responses") {
+		t.Fatalf("replay scope = matching:%v foreign:%v, want true/false", again[0].ReplayableAs("gemini"), again[0].ReplayableAs("openai-responses"))
+	}
+}
+
+func TestToolUsesIgnoresUnscopedProviderStateAfterScopedState(t *testing.T) {
+	t.Parallel()
+
+	var acc streamaccumulator.ToolUses
+	acc.Add(&content.ToolUseChunk{
+		Index:               0,
+		ProviderState:       json.RawMessage(`{"thoughtSignature":"scoped"}`),
+		ProviderStateFormat: "gemini",
+	})
+	acc.Add(&content.ToolUseChunk{
+		Index:         0,
+		ProviderState: json.RawMessage(`{"thoughtSignature":"unscoped"}`),
+	})
+
+	got := acc.Blocks()[0]
+	if string(got.ProviderState) != `{"thoughtSignature":"scoped"}` || got.ProviderStateFormat != "gemini" {
+		t.Fatalf("provider state pair = (%q, %q), want retained scoped pair", got.ProviderState, got.ProviderStateFormat)
+	}
+}
+
 func TestToolUsesEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -304,6 +370,24 @@ func TestThinkingPreservesProviderStateWithoutAliasing(t *testing.T) {
 	}
 	if !again.ReplayableAs("openai-responses") || again.ReplayableAs("gemini") {
 		t.Fatalf("replay scope = matching:%v foreign:%v, want true/false", again.ReplayableAs("openai-responses"), again.ReplayableAs("gemini"))
+	}
+}
+
+func TestThinkingIgnoresUnscopedProviderStateAfterScopedState(t *testing.T) {
+	t.Parallel()
+
+	var acc streamaccumulator.Thinking
+	acc.Add(&content.ThinkingChunk{
+		ProviderState:       json.RawMessage(`{"encrypted_content":"scoped"}`),
+		ProviderStateFormat: "openai-responses",
+	})
+	acc.Add(&content.ThinkingChunk{
+		ProviderState: json.RawMessage(`{"encrypted_content":"unscoped"}`),
+	})
+
+	got := acc.Block()
+	if string(got.ProviderState) != `{"encrypted_content":"scoped"}` || got.ProviderStateFormat != "openai-responses" {
+		t.Fatalf("provider state pair = (%q, %q), want retained scoped pair", got.ProviderState, got.ProviderStateFormat)
 	}
 }
 

@@ -29,8 +29,10 @@ type ThinkingChunk struct {
 // ToolUseChunk is a streaming delta of a tool call. Providers emit these as they
 // parse function-call deltas; the runner accumulates by Index into a ToolUseBlock.
 type ToolUseChunk struct {
-	Index     int    // tool call's position in the response
-	ID        string // tool_use id (may arrive only on the first delta for this Index)
-	Name      string // tool name (likewise)
-	InputJSON string // partial JSON delta of the arguments
+	Index               int    // tool call's position in the response
+	ID                  string // tool_use id (may arrive only on the first delta for this Index)
+	Name                string // tool name (likewise)
+	InputJSON           string // partial JSON delta of the arguments
+	ProviderState       json.RawMessage
+	ProviderStateFormat string
 }

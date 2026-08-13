@@ -1,6 +1,7 @@
 package content_test
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/looprig/core/content"
@@ -69,7 +70,7 @@ func TestChunk_ConcretePayloads(t *testing.T) {
 					t.Errorf("ThinkingChunk.Signature = %q, want %q", c.Signature, tt.wantSig)
 				}
 			case *content.ToolUseChunk:
-				if *c != tt.wantTool {
+				if !reflect.DeepEqual(*c, tt.wantTool) {
 					t.Errorf("ToolUseChunk = %+v, want %+v", *c, tt.wantTool)
 				}
 			default:
