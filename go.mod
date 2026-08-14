@@ -1,6 +1,6 @@
 module github.com/looprig/core
 
-go 1.25.8
+go 1.26.6
 
 tool (
 	github.com/securego/gosec/v2/cmd/gosec
