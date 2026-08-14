@@ -87,4 +87,76 @@ func TestChunk_InterfaceCompliance(t *testing.T) {
 	var _ content.Chunk = (*content.TextChunk)(nil)
 	var _ content.Chunk = (*content.ThinkingChunk)(nil)
 	var _ content.Chunk = (*content.ToolUseChunk)(nil)
+	var _ content.Chunk = (*content.RefusalChunk)(nil)
+	var _ content.Chunk = (*content.ImageChunk)(nil)
+}
+
+// TestRefusalChunk verifies the refusal delta carries its text payload and, like
+// TextChunk, has no Index: refusal deltas fold into a single RefusalBlock.
+func TestRefusalChunk(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		chunk content.RefusalChunk
+		want  content.RefusalChunk
+	}{
+		{
+			name:  "refusal chunk carries text payload",
+			chunk: content.RefusalChunk{Text: "I'm sorry"},
+			want:  content.RefusalChunk{Text: "I'm sorry"},
+		},
+		{
+			name:  "empty refusal delta is valid",
+			chunk: content.RefusalChunk{Text: ""},
+			want:  content.RefusalChunk{Text: ""},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if !reflect.DeepEqual(tt.chunk, tt.want) {
+				t.Errorf("RefusalChunk = %+v, want %+v", tt.chunk, tt.want)
+			}
+		})
+	}
+}
+
+// TestImageChunk verifies the image delta carries an Index plus the same
+// MediaType/Source pair as ImageBlock. The Index is load-bearing: image bytes
+// from two different images must never be concatenated.
+func TestImageChunk(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		chunk content.ImageChunk
+		want  content.ImageChunk
+	}{
+		{
+			name:  "inline data fragment at index 0",
+			chunk: content.ImageChunk{MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte{0x89, 0x50}}},
+			want:  content.ImageChunk{MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte{0x89, 0x50}}},
+		},
+		{
+			name:  "URL arrives whole on a single delta",
+			chunk: content.ImageChunk{Index: 1, MediaType: content.MediaTypeImageJPEG, Source: content.ImageSource{URL: "https://example.com/a.jpg"}},
+			want:  content.ImageChunk{Index: 1, MediaType: content.MediaTypeImageJPEG, Source: content.ImageSource{URL: "https://example.com/a.jpg"}},
+		},
+		{
+			name:  "continuation fragment carries no media type",
+			chunk: content.ImageChunk{Index: 2, Source: content.ImageSource{Data: []byte{0x0D, 0x0A}}},
+			want:  content.ImageChunk{Index: 2, Source: content.ImageSource{Data: []byte{0x0D, 0x0A}}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if !reflect.DeepEqual(tt.chunk, tt.want) {
+				t.Errorf("ImageChunk = %+v, want %+v", tt.chunk, tt.want)
+			}
+		})
+	}
 }

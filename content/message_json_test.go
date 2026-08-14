@@ -333,13 +333,12 @@ func TestAIMessageUnmarshalFreshState(t *testing.T) {
 	}
 
 	tests := []struct {
-		name              string
-		data              string
-		want              content.AIMessage
-		direct            bool
-		wantSyntaxError   bool
-		wantTypeError     bool
-		wantValidationErr bool
+		name            string
+		data            string
+		want            content.AIMessage
+		direct          bool
+		wantSyntaxError bool
+		wantTypeError   bool
 	}{
 		{
 			name: "absent blocks and usage clear prior values",
@@ -363,9 +362,16 @@ func TestAIMessageUnmarshalFreshState(t *testing.T) {
 			wantTypeError: true,
 		},
 		{
-			name:              "reasoning over output clears stale state and returns validation error",
-			data:              `{"role":"assistant","usage":{"OutputTokens":2,"ReasoningTokens":3}}`,
-			wantValidationErr: true,
+			// A stored transcript must stay readable whatever the provider
+			// reported. These are the live counts from an OpenRouter HTTP 200
+			// against nvidia/nemotron-3-ultra-550b-a55b:free, which used to make
+			// the message that carried them undecodable.
+			name: "reasoning over output decodes as reported",
+			data: `{"role":"assistant","usage":{"OutputTokens":216,"ReasoningTokens":226}}`,
+			want: content.AIMessage{
+				Message: content.Message{Role: content.RoleAssistant},
+				Usage:   &content.Usage{OutputTokens: 216, ReasoningTokens: 226},
+			},
 		},
 	}
 
@@ -384,7 +390,7 @@ func TestAIMessageUnmarshalFreshState(t *testing.T) {
 			} else {
 				err = json.Unmarshal([]byte(tt.data), &got)
 			}
-			if !tt.wantSyntaxError && !tt.wantTypeError && !tt.wantValidationErr {
+			if !tt.wantSyntaxError && !tt.wantTypeError {
 				if err != nil {
 					t.Fatalf("json.Unmarshal(AIMessage) error = %v", err)
 				}
@@ -406,12 +412,6 @@ func TestAIMessageUnmarshalFreshState(t *testing.T) {
 					t.Fatalf("json.Unmarshal(AIMessage) error = %v, want *json.UnmarshalTypeError", err)
 				}
 			}
-			if tt.wantValidationErr {
-				var target *content.UsageValidationError
-				if !errors.As(err, &target) {
-					t.Fatalf("json.Unmarshal(AIMessage) error = %v, want *content.UsageValidationError", err)
-				}
-			}
 			if !reflect.DeepEqual(got, content.AIMessage{}) {
 				t.Errorf("AIMessage after failed decode = %#v, want zero value", got)
 			}
@@ -426,7 +426,6 @@ func TestAIMessageJSONErrorBoundaries(t *testing.T) {
 		name                 string
 		run                  func() error
 		wantInvalidUnmarshal bool
-		wantValidationErr    bool
 	}{
 		{
 			name: "nil receiver returns typed invalid unmarshal error",
@@ -437,15 +436,17 @@ func TestAIMessageJSONErrorBoundaries(t *testing.T) {
 			wantInvalidUnmarshal: true,
 		},
 		{
-			name: "marshal rejects invalid reasoning metadata",
+			// This used to be the one place a *marshal* could fail on content
+			// that had already been received and accepted. Usage is metrics; a
+			// message that exists must always be writable.
+			name: "marshal accepts reasoning metadata that diverges from the convention",
 			run: func() error {
 				_, err := json.Marshal(content.AIMessage{
 					Message: content.Message{Role: content.RoleAssistant},
-					Usage:   &content.Usage{OutputTokens: 1, ReasoningTokens: 2},
+					Usage:   &content.Usage{OutputTokens: 216, ReasoningTokens: 226},
 				})
 				return err
 			},
-			wantValidationErr: true,
 		},
 	}
 
@@ -454,17 +455,15 @@ func TestAIMessageJSONErrorBoundaries(t *testing.T) {
 			t.Parallel()
 
 			err := tt.run()
-			if tt.wantInvalidUnmarshal {
-				var target *json.InvalidUnmarshalError
-				if !errors.As(err, &target) {
-					t.Fatalf("error = %v, want *json.InvalidUnmarshalError", err)
+			if !tt.wantInvalidUnmarshal {
+				if err != nil {
+					t.Fatalf("error = %v, want nil", err)
 				}
+				return
 			}
-			if tt.wantValidationErr {
-				var target *content.UsageValidationError
-				if !errors.As(err, &target) {
-					t.Fatalf("error = %v, want *content.UsageValidationError", err)
-				}
+			var target *json.InvalidUnmarshalError
+			if !errors.As(err, &target) {
+				t.Fatalf("error = %v, want *json.InvalidUnmarshalError", err)
 			}
 		})
 	}

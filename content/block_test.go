@@ -67,6 +67,7 @@ func TestBlockTypeConstants(t *testing.T) {
 		{name: "TypeThinking", got: content.TypeThinking, want: "thinking"},
 		{name: "TypeToolUse", got: content.TypeToolUse, want: "tool_use"},
 		{name: "TypeToolResult", got: content.TypeToolResult, want: "tool_result"},
+		{name: "TypeRefusal", got: content.TypeRefusal, want: "refusal"},
 	}
 
 	for _, tt := range tests {
@@ -90,6 +91,74 @@ func TestBlock_InterfaceCompliance(t *testing.T) {
 	var _ content.Block = (*content.ThinkingBlock)(nil)
 	var _ content.Block = (*content.ToolUseBlock)(nil)
 	var _ content.Block = (*content.ToolResultBlock)(nil)
+	var _ content.Block = (*content.RefusalBlock)(nil)
+}
+
+// TestRefusalBlock verifies RefusalBlock carries the model's stated reason for
+// declining. A refusal is NOT a TextBlock: the distinction is the whole point of
+// the type, because a caller that cannot tell a refusal from ordinary assistant
+// text will report a declined request as a successful empty answer.
+func TestRefusalBlock(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		block    content.RefusalBlock
+		wantText string
+	}{
+		{
+			name:     "happy path",
+			block:    content.RefusalBlock{Text: "I'm sorry, I can't help with that."},
+			wantText: "I'm sorry, I can't help with that.",
+		},
+		{
+			// A provider may declare refusal as a required-but-empty field on a
+			// successful message; an empty refusal is still a distinct value from
+			// no refusal block at all, and the type must carry it.
+			name:     "empty refusal text",
+			block:    content.RefusalBlock{Text: ""},
+			wantText: "",
+		},
+		{
+			name:     "multiline refusal text",
+			block:    content.RefusalBlock{Text: "line1\nline2"},
+			wantText: "line1\nline2",
+		},
+		{
+			name:     "unicode refusal text",
+			block:    content.RefusalBlock{Text: "申し訳ありません"},
+			wantText: "申し訳ありません",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if tt.block.Text != tt.wantText {
+				t.Errorf("RefusalBlock.Text = %q, want %q", tt.block.Text, tt.wantText)
+			}
+		})
+	}
+}
+
+// TestRefusalBlockIsNotTextBlock pins the semantic distinction at the type level:
+// a *RefusalBlock must never satisfy a type switch arm written for *TextBlock,
+// so an exhaustive switch is forced to decide what a refusal means rather than
+// silently rendering it as ordinary assistant prose.
+func TestRefusalBlockIsNotTextBlock(t *testing.T) {
+	t.Parallel()
+
+	var b content.Block = &content.RefusalBlock{Text: "no"}
+	if _, ok := b.(*content.TextBlock); ok {
+		t.Fatal("RefusalBlock matched the *TextBlock arm of a type switch")
+	}
+	r, ok := b.(*content.RefusalBlock)
+	if !ok {
+		t.Fatalf("Block = %T, want *content.RefusalBlock", b)
+	}
+	if r.Text != "no" {
+		t.Errorf("RefusalBlock.Text = %q, want %q", r.Text, "no")
+	}
 }
 
 // TestTextBlock verifies TextBlock fields.

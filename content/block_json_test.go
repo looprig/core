@@ -79,6 +79,26 @@ func TestBlockCodecRoundTrip(t *testing.T) {
 			},
 		},
 		{
+			name: "refusal block",
+			in:   &content.RefusalBlock{Text: "I'm sorry, I can't help with that."},
+		},
+		{
+			// An empty refusal is a real value (OpenAI declares refusal as a
+			// required member), so it must survive persistence as a refusal
+			// block rather than decode back as absent.
+			name: "refusal block with empty text",
+			in:   &content.RefusalBlock{Text: ""},
+		},
+		{
+			name: "tool_result containing a refusal block",
+			in: &content.ToolResultBlock{
+				ToolUseID: "tu_3",
+				Content: []content.Block{
+					&content.RefusalBlock{Text: "declined"},
+				},
+			},
+		},
+		{
 			// Locks the recursion invariant: a tool_result whose content holds
 			// another tool_result holding a text block must survive the round
 			// trip two levels deep.
@@ -113,6 +133,69 @@ func TestBlockCodecRoundTrip(t *testing.T) {
 				t.Errorf("round trip = %#v, want %#v", got, tt.in)
 			}
 		})
+	}
+}
+
+// TestRefusalAndTextTagsAreDistinct guards the one place a refusal could be
+// silently downgraded to ordinary assistant prose: RefusalBlock and TextBlock
+// have byte-identical payloads, so the wire tag is the ONLY discriminator. If
+// the tag were ever shared or dropped, a persisted refusal would restore as a
+// TextBlock and the "the model declined" signal would be lost forever.
+func TestRefusalAndTextTagsAreDistinct(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		in       content.Block
+		wantTag  content.BlockType
+		wantType string
+	}{
+		{name: "text", in: &content.TextBlock{Text: "same"}, wantTag: content.TypeText, wantType: "*content.TextBlock"},
+		{name: "refusal", in: &content.RefusalBlock{Text: "same"}, wantTag: content.TypeRefusal, wantType: "*content.RefusalBlock"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			data, err := content.MarshalBlock(tt.in)
+			if err != nil {
+				t.Fatalf("MarshalBlock() error = %v", err)
+			}
+			var probe struct {
+				Type content.BlockType `json:"type"`
+			}
+			if err := json.Unmarshal(data, &probe); err != nil {
+				t.Fatalf("probe unmarshal error = %v", err)
+			}
+			if probe.Type != tt.wantTag {
+				t.Errorf("wire tag = %q, want %q", probe.Type, tt.wantTag)
+			}
+			got, err := content.UnmarshalBlock(data)
+			if err != nil {
+				t.Fatalf("UnmarshalBlock() error = %v", err)
+			}
+			if gotType := reflect.TypeOf(got).String(); gotType != tt.wantType {
+				t.Errorf("decoded concrete type = %s, want %s", gotType, tt.wantType)
+			}
+		})
+	}
+}
+
+// TestMarshalBlockNilRefusal pins the fail-secure contract for a typed-nil
+// refusal payload: it must report *NilBlockError tagged "refusal", never emit a
+// bare {"type":"refusal"} that would restore as an empty refusal.
+func TestMarshalBlockNilRefusal(t *testing.T) {
+	t.Parallel()
+
+	var b content.Block = (*content.RefusalBlock)(nil)
+	_, err := content.MarshalBlock(b)
+	var nbe *content.NilBlockError
+	if !errors.As(err, &nbe) {
+		t.Fatalf("MarshalBlock((*RefusalBlock)(nil)) error = %v, want *NilBlockError", err)
+	}
+	if nbe.Type != content.TypeRefusal {
+		t.Errorf("NilBlockError.Type = %q, want %q", nbe.Type, content.TypeRefusal)
 	}
 }
 
@@ -271,6 +354,7 @@ func TestPayloadsHaveNoTypeKey(t *testing.T) {
 		&content.ThinkingBlock{Thinking: "t", Signature: "s"},
 		&content.ToolUseBlock{ID: "i", Name: "n", Input: json.RawMessage(`{}`)},
 		&content.ToolResultBlock{ToolUseID: "i", Content: []content.Block{&content.TextBlock{Text: "x"}}},
+		&content.RefusalBlock{Text: "x"},
 	}
 
 	for _, p := range payloads {

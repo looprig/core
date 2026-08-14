@@ -126,9 +126,6 @@ func (m AIMessage) MarshalJSON() ([]byte, error) {
 
 	var usage *usageJSON
 	if m.Usage != nil {
-		if err := m.Usage.Validate(); err != nil {
-			return nil, err
-		}
 		u := usageJSON(*m.Usage)
 		usage = &u
 	}
@@ -156,12 +153,12 @@ func (m *AIMessage) UnmarshalJSON(data []byte) error {
 		blocks = decoded
 	}
 
+	// Usage is recorded verbatim in both directions. A stored transcript must
+	// stay readable whatever the provider reported about it; see the
+	// ReasoningTokens field comment on Usage.
 	var usage *Usage
 	if j.Usage != nil {
 		u := Usage(*j.Usage)
-		if err := u.Validate(); err != nil {
-			return err
-		}
 		usage = &u
 	}
 

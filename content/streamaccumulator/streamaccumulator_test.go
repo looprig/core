@@ -276,13 +276,53 @@ func TestTextEmpty(t *testing.T) {
 	}
 }
 
-func TestThinking(t *testing.T) {
+// TestSingularBlockAccessorsExistOnlyOnSingleBlockAccumulators pins which
+// accumulators may expose a singular Block().
+//
+// Text and Refusal are single-block accumulators: their chunks carry no Index
+// and concatenate losslessly, so Block() is the whole result and their only
+// accessor. Thinking is multi-block — a response legitimately carries several
+// reasoning blocks, each with its OWN signature or opaque provider state — so a
+// singular accessor can only return one of them and silently drop blocks 2..N,
+// which is the defect Blocks() was added to fix. Thinking retains its deprecated
+// Block method only for source compatibility with the prior minor release;
+// multi-block consumers must use Blocks.
+func TestSingularBlockAccessorsExistOnlyOnSingleBlockAccumulators(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		acc       any
+		wantBlock bool
+	}{
+		{name: "Text keeps Block", acc: streamaccumulator.Text{}, wantBlock: true},
+		{name: "Refusal keeps Block", acc: streamaccumulator.Refusal{}, wantBlock: true},
+		{name: "Thinking keeps deprecated Block", acc: streamaccumulator.Thinking{}, wantBlock: true},
+		{name: "ToolUses has no Block", acc: streamaccumulator.ToolUses{}, wantBlock: false},
+		{name: "Images has no Block", acc: streamaccumulator.Images{}, wantBlock: false},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			typ := reflect.TypeOf(tt.acc)
+			_, byValue := typ.MethodByName("Block")
+			_, byPointer := reflect.PointerTo(typ).MethodByName("Block")
+			if got := byValue || byPointer; got != tt.wantBlock {
+				t.Errorf("%s has Block() = %v, want %v", typ, got, tt.wantBlock)
+			}
+		})
+	}
+}
+
+func TestRefusal(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name   string
-		chunks []*content.ThinkingChunk
-		want   *content.ThinkingBlock
+		chunks []*content.RefusalChunk
+		want   *content.RefusalBlock
 	}{
 		{
 			name:   "empty yields nil block",
@@ -290,9 +330,261 @@ func TestThinking(t *testing.T) {
 			want:   nil,
 		},
 		{
+			name:   "single chunk",
+			chunks: []*content.RefusalChunk{{Text: "I'm sorry"}},
+			want:   &content.RefusalBlock{Text: "I'm sorry"},
+		},
+		{
+			name: "multiple chunks fold into one block",
+			chunks: []*content.RefusalChunk{
+				{Text: "I'm "},
+				{Text: "sorry, I "},
+				{Text: "can't help."},
+			},
+			want: &content.RefusalBlock{Text: "I'm sorry, I can't help."},
+		},
+		{
+			// A provider that streams a refusal with no text at all still
+			// refused; the accumulator must materialize the block so the caller
+			// never mistakes a refusal for an ordinary empty reply.
+			name:   "empty-string delta still materializes a refusal block",
+			chunks: []*content.RefusalChunk{{Text: ""}},
+			want:   &content.RefusalBlock{Text: ""},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var acc streamaccumulator.Refusal
+			for _, c := range tt.chunks {
+				acc.Add(c)
+			}
+			got := acc.Block()
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Block() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRefusalEmpty(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		chunks    []*content.RefusalChunk
+		wantEmpty bool
+	}{
+		{name: "empty before any add", chunks: nil, wantEmpty: true},
+		{name: "not empty after add", chunks: []*content.RefusalChunk{{Text: "x"}}, wantEmpty: false},
+		{
+			name:      "not empty after empty-string add",
+			chunks:    []*content.RefusalChunk{{Text: ""}},
+			wantEmpty: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var acc streamaccumulator.Refusal
+			for _, c := range tt.chunks {
+				acc.Add(c)
+			}
+			if got := acc.Empty(); got != tt.wantEmpty {
+				t.Errorf("Empty() = %v, want %v", got, tt.wantEmpty)
+			}
+		})
+	}
+}
+
+func TestImages(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		chunks []*content.ImageChunk
+		want   []content.ImageBlock
+	}{
+		{
+			name:   "empty: no chunks yields nil",
+			chunks: nil,
+			want:   nil,
+		},
+		{
+			name: "single index, multi-fragment data concatenates in arrival order",
+			chunks: []*content.ImageChunk{
+				{Index: 0, MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte{0x89, 0x50}}},
+				{Index: 0, Source: content.ImageSource{Data: []byte{0x4E, 0x47}}},
+			},
+			want: []content.ImageBlock{
+				{MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte{0x89, 0x50, 0x4E, 0x47}}},
+			},
+		},
+		{
+			name: "URL-only image needs no data",
+			chunks: []*content.ImageChunk{
+				{Index: 0, MediaType: content.MediaTypeImageJPEG, Source: content.ImageSource{URL: "https://example.com/a.jpg"}},
+			},
+			want: []content.ImageBlock{
+				{MediaType: content.MediaTypeImageJPEG, Source: content.ImageSource{URL: "https://example.com/a.jpg"}},
+			},
+		},
+		{
+			name: "two images never share bytes",
+			chunks: []*content.ImageChunk{
+				{Index: 0, MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte{0xAA}}},
+				{Index: 1, MediaType: content.MediaTypeImageJPEG, Source: content.ImageSource{Data: []byte{0xBB}}},
+				{Index: 0, Source: content.ImageSource{Data: []byte{0xCC}}},
+			},
+			want: []content.ImageBlock{
+				{MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte{0xAA, 0xCC}}},
+				{MediaType: content.MediaTypeImageJPEG, Source: content.ImageSource{Data: []byte{0xBB}}},
+			},
+		},
+		{
+			name: "multi-index returns ascending order regardless of arrival order",
+			chunks: []*content.ImageChunk{
+				{Index: 2, MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte{2}}},
+				{Index: 0, MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte{0}}},
+				{Index: 1, MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte{1}}},
+			},
+			want: []content.ImageBlock{
+				{MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte{0}}},
+				{MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte{1}}},
+				{MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte{2}}},
+			},
+		},
+		{
+			name: "negative and huge indexes do not panic and sort ascending",
+			chunks: []*content.ImageChunk{
+				{Index: 1 << 30, MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte("big")}},
+				{Index: -5, MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte("neg")}},
+				{Index: 0, MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte("mid")}},
+			},
+			want: []content.ImageBlock{
+				{MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte("neg")}},
+				{MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte("mid")}},
+				{MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: []byte("big")}},
+			},
+		},
+		{
+			name: "last non-empty MediaType/URL wins; an empty fragment never clears a set value",
+			chunks: []*content.ImageChunk{
+				{Index: 0, MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{URL: "https://example.com/first.png"}},
+				{Index: 0},
+				{Index: 0, MediaType: content.MediaTypeImageWebP, Source: content.ImageSource{URL: "https://example.com/second.webp"}},
+			},
+			want: []content.ImageBlock{
+				{MediaType: content.MediaTypeImageWebP, Source: content.ImageSource{URL: "https://example.com/second.webp"}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var acc streamaccumulator.Images
+			for _, c := range tt.chunks {
+				acc.Add(c)
+			}
+			got := acc.Blocks()
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Blocks() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestImagesDoesNotAliasChunkOrResultData locks the defensive-copy contract on
+// both sides of the accumulator: mutating a caller's delta slice after Add must
+// not rewrite accumulated bytes, and mutating one returned block must not
+// corrupt a later Blocks() call.
+func TestImagesDoesNotAliasChunkOrResultData(t *testing.T) {
+	t.Parallel()
+
+	fragment := []byte{0x89, 0x50}
+	var acc streamaccumulator.Images
+	acc.Add(&content.ImageChunk{Index: 0, MediaType: content.MediaTypeImagePNG, Source: content.ImageSource{Data: fragment}})
+	acc.Add(&content.ImageChunk{Index: 0, Source: content.ImageSource{Data: []byte{0x4E, 0x47}}})
+
+	for i := range fragment {
+		fragment[i] = 0xFF
+	}
+
+	want := []byte{0x89, 0x50, 0x4E, 0x47}
+	got := acc.Blocks()
+	if len(got) != 1 {
+		t.Fatalf("len(Blocks()) = %d, want 1", len(got))
+	}
+	if !reflect.DeepEqual(got[0].Source.Data, want) {
+		t.Fatalf("Blocks()[0].Source.Data = %v, want %v", got[0].Source.Data, want)
+	}
+
+	got[0].Source.Data[0] = 0x00
+	again := acc.Blocks()
+	if !reflect.DeepEqual(again[0].Source.Data, want) {
+		t.Fatalf("second Blocks()[0].Source.Data = %v, want independent copy %v", again[0].Source.Data, want)
+	}
+}
+
+func TestImagesEmpty(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		chunks    []*content.ImageChunk
+		wantEmpty bool
+	}{
+		{name: "empty before any add", chunks: nil, wantEmpty: true},
+		{
+			name:      "not empty after one add",
+			chunks:    []*content.ImageChunk{{Index: 0, MediaType: content.MediaTypeImagePNG}},
+			wantEmpty: false,
+		},
+		{
+			name:      "not empty after add at negative index",
+			chunks:    []*content.ImageChunk{{Index: -1, MediaType: content.MediaTypeImagePNG}},
+			wantEmpty: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var acc streamaccumulator.Images
+			for _, c := range tt.chunks {
+				acc.Add(c)
+			}
+			if got := acc.Empty(); got != tt.wantEmpty {
+				t.Errorf("Empty() = %v, want %v", got, tt.wantEmpty)
+			}
+		})
+	}
+}
+
+func TestThinking(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		chunks []*content.ThinkingChunk
+		want   []content.ThinkingBlock
+	}{
+		{
+			name:   "empty yields no blocks",
+			chunks: nil,
+			want:   nil,
+		},
+		{
 			name:   "single chunk, signature stays empty",
 			chunks: []*content.ThinkingChunk{{Thinking: "reasoning"}},
-			want:   &content.ThinkingBlock{Thinking: "reasoning", Signature: ""},
+			want:   []content.ThinkingBlock{{Thinking: "reasoning", Signature: ""}},
 		},
 		{
 			name: "multiple chunks fold into one block with empty signature",
@@ -301,7 +593,7 @@ func TestThinking(t *testing.T) {
 				{Thinking: "one "},
 				{Thinking: "two"},
 			},
-			want: &content.ThinkingBlock{Thinking: "step one two", Signature: ""},
+			want: []content.ThinkingBlock{{Thinking: "step one two", Signature: ""}},
 		},
 		{
 			name: "signature-only delta is retained",
@@ -309,7 +601,7 @@ func TestThinking(t *testing.T) {
 				{Thinking: "reasoning"},
 				{Signature: "sig"},
 			},
-			want: &content.ThinkingBlock{Thinking: "reasoning", Signature: "sig"},
+			want: []content.ThinkingBlock{{Thinking: "reasoning", Signature: "sig"}},
 		},
 	}
 
@@ -321,11 +613,158 @@ func TestThinking(t *testing.T) {
 			for _, c := range tt.chunks {
 				acc.Add(c)
 			}
-			got := acc.Block()
+			got := acc.Blocks()
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Block() = %#v, want %#v", got, tt.want)
+				t.Errorf("Blocks() = %#v, want %#v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestThinkingBlocks(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		chunks []*content.ThinkingChunk
+		want   []content.ThinkingBlock
+	}{
+		{
+			name:   "empty: no chunks yields nil",
+			chunks: nil,
+			want:   nil,
+		},
+		{
+			name: "unset Index: every delta folds into the single block at index 0",
+			chunks: []*content.ThinkingChunk{
+				{Thinking: "step "},
+				{Thinking: "one"},
+				{Signature: "sig"},
+			},
+			want: []content.ThinkingBlock{{Thinking: "step one", Signature: "sig"}},
+		},
+		{
+			name: "anthropic interleaved thinking: each block keeps its own signature",
+			chunks: []*content.ThinkingChunk{
+				{Index: 0, Thinking: "first"},
+				{Index: 0, Signature: "SIG-ONE"},
+				{
+					Index:               1,
+					ProviderState:       json.RawMessage(`{"data":"REDACTED"}`),
+					ProviderStateFormat: "anthropic",
+				},
+				{Index: 2, Thinking: "second"},
+				{Index: 2, Signature: "SIG-TWO"},
+			},
+			want: []content.ThinkingBlock{
+				{Thinking: "first", Signature: "SIG-ONE"},
+				{
+					ProviderState:       json.RawMessage(`{"data":"REDACTED"}`),
+					ProviderStateFormat: "anthropic",
+				},
+				{Thinking: "second", Signature: "SIG-TWO"},
+			},
+		},
+		{
+			name: "multi-index returns ascending order regardless of arrival order",
+			chunks: []*content.ThinkingChunk{
+				{Index: 2, Thinking: "two", Signature: "s2"},
+				{Index: 0, Thinking: "zero", Signature: "s0"},
+				{Index: 1, Thinking: "one", Signature: "s1"},
+			},
+			want: []content.ThinkingBlock{
+				{Thinking: "zero", Signature: "s0"},
+				{Thinking: "one", Signature: "s1"},
+				{Thinking: "two", Signature: "s2"},
+			},
+		},
+		{
+			name: "index gaps are preserved as ordering only, never as empty filler blocks",
+			chunks: []*content.ThinkingChunk{
+				{Index: 7, Thinking: "late", Signature: "s7"},
+				{Index: 3, Thinking: "early", Signature: "s3"},
+			},
+			want: []content.ThinkingBlock{
+				{Thinking: "early", Signature: "s3"},
+				{Thinking: "late", Signature: "s7"},
+			},
+		},
+		{
+			name: "negative and huge indexes do not panic and sort ascending",
+			chunks: []*content.ThinkingChunk{
+				{Index: 1 << 30, Thinking: "big"},
+				{Index: -5, Thinking: "neg"},
+				{Index: 0, Thinking: "mid"},
+			},
+			want: []content.ThinkingBlock{
+				{Thinking: "neg"},
+				{Thinking: "mid"},
+				{Thinking: "big"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var acc streamaccumulator.Thinking
+			for _, c := range tt.chunks {
+				acc.Add(c)
+			}
+			got := acc.Blocks()
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Blocks() = %#v, want %#v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestThinkingDeprecatedBlockReturnsFirstBlock(t *testing.T) {
+	var acc streamaccumulator.Thinking
+	acc.Add(&content.ThinkingChunk{Index: 1, Thinking: "second"})
+	acc.Add(&content.ThinkingChunk{Index: 0, Thinking: "first"})
+	got := acc.Block()
+	if got == nil || got.Thinking != "first" {
+		t.Fatalf("Block() = %#v, want first indexed block", got)
+	}
+}
+
+func TestImagesSourceSwitchKeepsExactlyOneSourceArm(t *testing.T) {
+	var acc streamaccumulator.Images
+	acc.Add(&content.ImageChunk{Index: 0, Source: content.ImageSource{URL: "https://example.test/image.png"}})
+	acc.Add(&content.ImageChunk{Index: 0, Source: content.ImageSource{Data: []byte("inline")}})
+	blocks := acc.Blocks()
+	if len(blocks) != 1 || blocks[0].Source.URL != "" || string(blocks[0].Source.Data) != "inline" {
+		t.Fatalf("URL then data = %#v, want data-only source", blocks)
+	}
+
+	acc.Add(&content.ImageChunk{Index: 0, Source: content.ImageSource{URL: "https://example.test/final.png"}})
+	blocks = acc.Blocks()
+	if len(blocks) != 1 || blocks[0].Source.URL == "" || len(blocks[0].Source.Data) != 0 {
+		t.Fatalf("data then URL = %#v, want URL-only source", blocks)
+	}
+}
+
+// TestThinkingKeepsEveryIndexedBlock is what replaced the former
+// TestThinkingBlockReturnsLowestIndexBlock: that test asserted the singular
+// Block()'s lowest-index behaviour, which silently discarded reasoning blocks
+// 2..N together with their signatures. Blocks() must surface both blocks, each
+// still bound to its own signature.
+func TestThinkingKeepsEveryIndexedBlock(t *testing.T) {
+	t.Parallel()
+
+	var acc streamaccumulator.Thinking
+	acc.Add(&content.ThinkingChunk{Index: 2, Thinking: "second", Signature: "SIG-TWO"})
+	acc.Add(&content.ThinkingChunk{Index: 0, Thinking: "first", Signature: "SIG-ONE"})
+
+	got := acc.Blocks()
+	want := []content.ThinkingBlock{
+		{Thinking: "first", Signature: "SIG-ONE"},
+		{Thinking: "second", Signature: "SIG-TWO"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Blocks() = %#v, want %#v", got, want)
 	}
 }
 
@@ -350,23 +789,27 @@ func TestThinkingPreservesProviderStateWithoutAliasing(t *testing.T) {
 	for i := range finalState {
 		finalState[i] = 'x'
 	}
-	got := acc.Block()
+	blocks := acc.Blocks()
+	if len(blocks) != 1 {
+		t.Fatalf("Blocks() = %#v, want exactly one block", blocks)
+	}
+	got := blocks[0]
 	wantState := `{"encrypted_content":"final"}`
 	if got.Thinking != "reasoning" || got.Signature != "sig" {
-		t.Fatalf("Block() text/signature = (%q, %q), want (%q, %q)", got.Thinking, got.Signature, "reasoning", "sig")
+		t.Fatalf("Blocks()[0] text/signature = (%q, %q), want (%q, %q)", got.Thinking, got.Signature, "reasoning", "sig")
 	}
 	if string(got.ProviderState) != wantState {
-		t.Fatalf("Block().ProviderState = %q, want %q", got.ProviderState, wantState)
+		t.Fatalf("Blocks()[0].ProviderState = %q, want %q", got.ProviderState, wantState)
 	}
 	if got.ProviderStateFormat != "openai-responses" {
-		t.Fatalf("Block().ProviderStateFormat = %q, want %q", got.ProviderStateFormat, "openai-responses")
+		t.Fatalf("Blocks()[0].ProviderStateFormat = %q, want %q", got.ProviderStateFormat, "openai-responses")
 	}
 
-	// Mutating one returned block must not alter a later Block result.
+	// Mutating one returned block must not alter a later Blocks result.
 	got.ProviderState[0] = 'x'
-	again := acc.Block()
+	again := acc.Blocks()[0]
 	if string(again.ProviderState) != wantState {
-		t.Fatalf("second Block().ProviderState = %q, want independent copy %q", again.ProviderState, wantState)
+		t.Fatalf("second Blocks()[0].ProviderState = %q, want independent copy %q", again.ProviderState, wantState)
 	}
 	if !again.ReplayableAs("openai-responses") || again.ReplayableAs("gemini") {
 		t.Fatalf("replay scope = matching:%v foreign:%v, want true/false", again.ReplayableAs("openai-responses"), again.ReplayableAs("gemini"))
@@ -385,7 +828,11 @@ func TestThinkingIgnoresUnscopedProviderStateAfterScopedState(t *testing.T) {
 		ProviderState: json.RawMessage(`{"encrypted_content":"unscoped"}`),
 	})
 
-	got := acc.Block()
+	blocks := acc.Blocks()
+	if len(blocks) != 1 {
+		t.Fatalf("Blocks() = %#v, want exactly one block", blocks)
+	}
+	got := blocks[0]
 	if string(got.ProviderState) != `{"encrypted_content":"scoped"}` || got.ProviderStateFormat != "openai-responses" {
 		t.Fatalf("provider state pair = (%q, %q), want retained scoped pair", got.ProviderState, got.ProviderStateFormat)
 	}

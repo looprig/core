@@ -16,7 +16,11 @@ func Example_accumulateChunks() {
 	var thinking streamaccumulator.Thinking
 	thinking.Add(&content.ThinkingChunk{Thinking: "check "})
 	thinking.Add(&content.ThinkingChunk{Thinking: "facts", Signature: "signed"})
-	fmt.Println(thinking.Block().Thinking, thinking.Block().Signature)
+	// Thinking is keyed by Index because a response may carry several reasoning
+	// blocks, each with its own signature, so Blocks() — not a singular
+	// accessor — is the whole result.
+	reasoning := thinking.Blocks()[0]
+	fmt.Println(reasoning.Thinking, reasoning.Signature)
 
 	var calls streamaccumulator.ToolUses
 	calls.Add(&content.ToolUseChunk{Index: 0, ID: "call_1", Name: "weather", InputJSON: `{"city":`})

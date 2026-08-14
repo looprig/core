@@ -17,6 +17,7 @@ func FuzzUnmarshalBlock(f *testing.F) {
 		[]byte(`{"type":"thinking","Thinking":"t","Signature":"s"}`),
 		[]byte(`{"type":"tool_result","tool_use_id":"tu","content":[{"type":"text","Text":"x"}]}`),
 		[]byte(`{"type":"image","MediaType":"image/png","Source":{"URL":"u"}}`),
+		[]byte(`{"type":"refusal","Text":"I can't help with that."}`),
 		[]byte(`{"type":"video"}`),
 		[]byte(`not json`),
 		[]byte(``),

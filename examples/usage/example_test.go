@@ -1,7 +1,6 @@
 package usageexample_test
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/looprig/core/content"
@@ -30,11 +29,14 @@ func Example_usageAccounting() {
 	}
 	fmt.Println(contextTokens, total.OutputTokens, totalTokens)
 
-	invalid := content.Usage{OutputTokens: 2, ReasoningTokens: 3}
-	var validationErr *content.UsageValidationError
-	fmt.Println(errors.As(invalid.Validate(), &validationErr), validationErr.Field)
+	// ReasoningTokens is documented as a subset of OutputTokens, and a provider
+	// can still report otherwise. That is a fact about the report, not a reason
+	// to reject it: the counts stay exactly as received and the divergence is
+	// observable.
+	divergent := content.Usage{OutputTokens: 216, ReasoningTokens: 226}
+	fmt.Println(divergent.ReasoningWithinOutput(), divergent.OutputTokens, divergent.ReasoningTokens)
 
 	// Output:
 	// 130 30 160
-	// true ReasoningTokens
+	// false 216 226
 }

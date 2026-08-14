@@ -7,17 +7,30 @@ import (
 
 const maxTokenCount TokenCount = ^TokenCount(0)
 
-func TestUsageValidate(t *testing.T) {
+func TestUsageValidateCompatibility(t *testing.T) {
+	if err := (Usage{OutputTokens: 2, ReasoningTokens: 1}).Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+	err := (Usage{OutputTokens: 1, ReasoningTokens: 2}).Validate()
+	var validationErr *UsageValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("Validate() error = %T %v, want *UsageValidationError", err, err)
+	}
+}
+
+// TestUsageReasoningWithinOutput covers the documented subset convention as
+// what it is: an observable property of reported counts, not a gate. It used to
+// be Usage.Validate, whose error discarded whatever generation carried the
+// counts — see the ReasoningTokens field comment for why that was wrong.
+func TestUsageReasoningWithinOutput(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name       string
-		usage      Usage
-		wantField  UsageField
-		wantReason UsageValidationReason
-		wantErr    bool
+		name  string
+		usage Usage
+		want  bool
 	}{
-		{name: "zero value", usage: Usage{}},
+		{name: "zero value", usage: Usage{}, want: true},
 		{
 			name: "present all-zero domain value",
 			usage: Usage{
@@ -27,23 +40,29 @@ func TestUsageValidate(t *testing.T) {
 				CacheCreationTokens: 0,
 				ReasoningTokens:     0,
 			},
+			want: true,
 		},
 		{
-			name: "reasoning equals output boundary",
-			usage: Usage{
-				OutputTokens:    7,
-				ReasoningTokens: 7,
-			},
+			name:  "reasoning below output",
+			usage: Usage{OutputTokens: 7, ReasoningTokens: 3},
+			want:  true,
 		},
 		{
-			name: "reasoning exceeds output",
-			usage: Usage{
-				OutputTokens:    7,
-				ReasoningTokens: 8,
-			},
-			wantField:  UsageFieldReasoningTokens,
-			wantReason: UsageValidationReasonReasoningExceedsOutput,
-			wantErr:    true,
+			name:  "reasoning equals output boundary",
+			usage: Usage{OutputTokens: 7, ReasoningTokens: 7},
+			want:  true,
+		},
+		{
+			name:  "reasoning exceeds output",
+			usage: Usage{OutputTokens: 7, ReasoningTokens: 8},
+			want:  false,
+		},
+		{
+			// The live counts from an OpenRouter HTTP 200 against
+			// nvidia/nemotron-3-ultra-550b-a55b:free.
+			name:  "reported provider divergence is observable, never fatal",
+			usage: Usage{InputTokens: 31, OutputTokens: 216, ReasoningTokens: 226},
+			want:  false,
 		},
 	}
 
@@ -51,23 +70,8 @@ func TestUsageValidate(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := tt.usage.Validate()
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("Usage.Validate() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if !tt.wantErr {
-				return
-			}
-
-			var validationErr *UsageValidationError
-			if !errors.As(err, &validationErr) {
-				t.Fatalf("Usage.Validate() error type = %T, want *UsageValidationError", err)
-			}
-			if validationErr.Field != tt.wantField {
-				t.Errorf("UsageValidationError.Field = %q, want %q", validationErr.Field, tt.wantField)
-			}
-			if validationErr.Reason != tt.wantReason {
-				t.Errorf("UsageValidationError.Reason = %q, want %q", validationErr.Reason, tt.wantReason)
+			if got := tt.usage.ReasoningWithinOutput(); got != tt.want {
+				t.Errorf("Usage.ReasoningWithinOutput() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -223,13 +227,12 @@ func TestUsageAdd(t *testing.T) {
 	}
 
 	tests := []struct {
-		name                string
-		left                Usage
-		right               Usage
-		want                Usage
-		wantValidationField UsageField
-		wantOverflowField   UsageField
-		wantErr             bool
+		name              string
+		left              Usage
+		right             Usage
+		want              Usage
+		wantOverflowField UsageField
+		wantErr           bool
 	}{
 		{
 			name: "field-wise sum",
@@ -276,18 +279,15 @@ func TestUsageAdd(t *testing.T) {
 		{name: "right additive identity", left: value, right: zero, want: value},
 		{name: "left additive identity", left: zero, right: value, want: value},
 		{
-			name:                "invalid left operand",
-			left:                Usage{ReasoningTokens: 1},
-			right:               zero,
-			wantValidationField: UsageFieldReasoningTokens,
-			wantErr:             true,
-		},
-		{
-			name:                "invalid right operand",
-			left:                zero,
-			right:               Usage{ReasoningTokens: 1},
-			wantValidationField: UsageFieldReasoningTokens,
-			wantErr:             true,
+			// Add folds one turn's counts into a running total. Refusing an
+			// operand whose reasoning exceeds its output made a single divergent
+			// provider report poison every subsequent aggregate for the session,
+			// so the sum is now taken field by field and the divergence travels
+			// with it where ReasoningWithinOutput can still see it.
+			name:  "operand diverging from the reasoning convention still sums",
+			left:  Usage{OutputTokens: 216, ReasoningTokens: 226},
+			right: Usage{OutputTokens: 10, ReasoningTokens: 4},
+			want:  Usage{OutputTokens: 226, ReasoningTokens: 230},
 		},
 		{
 			name:              "input overflow",
@@ -342,17 +342,6 @@ func TestUsageAdd(t *testing.T) {
 			}
 			if got != zero {
 				t.Errorf("Usage.Add() result on error = %+v, want zero value", got)
-			}
-
-			if tt.wantValidationField != "" {
-				var validationErr *UsageValidationError
-				if !errors.As(err, &validationErr) {
-					t.Fatalf("Usage.Add() error type = %T, want *UsageValidationError", err)
-				}
-				if validationErr.Field != tt.wantValidationField {
-					t.Errorf("UsageValidationError.Field = %q, want %q", validationErr.Field, tt.wantValidationField)
-				}
-				return
 			}
 
 			var overflowErr *UsageOverflowError

@@ -27,6 +27,11 @@ func blockTag(b Block) (BlockType, error) {
 		return TypeToolUse, nil
 	case *ToolResultBlock:
 		return TypeToolResult, nil
+	case *RefusalBlock:
+		// RefusalBlock and TextBlock serialize byte-identical payloads, so this
+		// tag is the ONLY thing that keeps a restored refusal from coming back as
+		// ordinary assistant prose. It must never be merged with TypeText.
+		return TypeRefusal, nil
 	default:
 		return "", &UnknownBlockTypeError{}
 	}
@@ -90,6 +95,8 @@ func UnmarshalBlock(data []byte) (Block, error) {
 		return decodeInto[ToolUseBlock](data)
 	case TypeToolResult:
 		return decodeInto[ToolResultBlock](data)
+	case TypeRefusal:
+		return decodeInto[RefusalBlock](data)
 	default:
 		return nil, &UnknownBlockTypeError{Type: probe.Type}
 	}
@@ -101,7 +108,7 @@ func decodeInto[T any](data []byte) (Block, error) {
 	if err := json.Unmarshal(data, v); err != nil {
 		return nil, &BlockDecodeError{Cause: err}
 	}
-	return any(v).(Block), nil // each *T satisfies Block for the seven payload types
+	return any(v).(Block), nil // each *T satisfies Block for the eight payload types
 }
 
 // MarshalBlocks encodes a []Block as a JSON array of tagged blocks.
