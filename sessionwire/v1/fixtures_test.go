@@ -3,6 +3,7 @@ package v1_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -147,10 +148,16 @@ func v1GoldenRoundTrip[T any](raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &value); err != nil {
 		return nil, err
 	}
-	if validator, ok := any(value).(interface{ Validate() error }); ok {
-		if err := validator.Validate(); err != nil {
-			return nil, err
-		}
+	// Assert on the addressable *T, not T: a Validate that later moves to a
+	// pointer receiver would otherwise fail the value-type assertion and skip
+	// the semantic check across every fixture with a green test. Every V1 record
+	// must be validatable, so a missing method is a failure rather than a skip.
+	validator, ok := any(&value).(interface{ Validate() error })
+	if !ok {
+		return nil, fmt.Errorf("%T has no Validate method; the fixture's semantic check would be vacuous", value)
+	}
+	if err := validator.Validate(); err != nil {
+		return nil, err
 	}
 	return json.Marshal(value)
 }

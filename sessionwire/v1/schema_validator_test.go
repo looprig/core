@@ -3,6 +3,7 @@ package v1_test
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"os"
 	"reflect"
@@ -625,6 +626,12 @@ func readV1Instance(t *testing.T, path string) any {
 	var value any
 	if err := decoder.Decode(&value); err != nil {
 		t.Fatalf("parse %s: %v", path, err)
+	}
+	// A fixture is exactly one JSON document; anything after it would be read as
+	// a valid instance while the bytes on disk are not.
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		t.Fatalf("%s carries trailing data after its JSON document (decode error %v)", path, err)
 	}
 	return value
 }

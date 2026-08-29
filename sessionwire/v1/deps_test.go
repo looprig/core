@@ -52,12 +52,22 @@ func TestProductionImportsStayTransportNeutral(t *testing.T) {
 		t.Fatalf("read package directory %q: %v", dir, err)
 	}
 
-	fset := token.NewFileSet()
+	var production []string
 	for _, entry := range entries {
 		if entry.IsDir() || !isProductionFile(entry.Name()) {
 			continue
 		}
-		path := filepath.Join(dir, entry.Name())
+		production = append(production, entry.Name())
+	}
+	// A file move or a tightened isProductionFile must not quietly turn the
+	// stdlib-only guarantee into a loop over nothing.
+	if len(production) == 0 {
+		t.Fatalf("no production Go files found in %q; the transport-neutrality check would be vacuous", dir)
+	}
+
+	fset := token.NewFileSet()
+	for _, name := range production {
+		path := filepath.Join(dir, name)
 		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
 		if err != nil {
 			t.Fatalf("parse production file %q: %v", path, err)
@@ -69,7 +79,7 @@ func TestProductionImportsStayTransportNeutral(t *testing.T) {
 			}
 			if !importAllowed(importPath) {
 				t.Errorf("production file %s imports disallowed path %q; sessionwire/v1 may import only non-HTTP standard-library packages",
-					entry.Name(), importPath)
+					name, importPath)
 			}
 		}
 	}
