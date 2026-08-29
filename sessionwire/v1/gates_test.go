@@ -74,7 +74,6 @@ func TestGateProjectionRequiresOpenIdentityAndAnswerability(t *testing.T) {
 	for _, body := range []string{
 		`{"gate_id":"gate-1","kind":"harness.ask_user","opened_journal_seq":42,"deadline":"2026-08-29T20:00:00Z","answerability":"resident","prompt":{}}`,
 		`{"gate_id":"gate-1","kind":"harness.ask_user","opened_event_id":"event-42","opened_journal_seq":42,"deadline":"2026-08-29T20:00:00Z","answerability":"unknown","prompt":{}}`,
-		`{"gate_id":"gate-1","kind":"harness.open_url","opened_event_id":"event-42","opened_journal_seq":42,"deadline":"2026-08-29T20:00:00Z","answerability":"resident","prompt":{}}`,
 	} {
 		var projection sessionwire.GateProjection
 		if err := json.Unmarshal([]byte(body), &projection); err == nil {
@@ -93,6 +92,26 @@ func TestGatePromptRejectsUnrenderableFieldsAndControls(t *testing.T) {
 	} {
 		if err := prompt.Validate(); err == nil {
 			t.Fatalf("GatePrompt.Validate() accepted an unrenderable public prompt: %#v", prompt)
+		}
+	}
+}
+
+// TestGateProjectionKindStaysOpaque pins the transport-neutral contract: Kind is
+// a forward-compatible opaque string owned by the runtime that opened the gate.
+// Core must not encode a Harness-owned enum value or a Harness-owned per-kind
+// validation rule, because a rename there would silently desynchronize this
+// module. Specification 6.2 requires only a trusted Origin "when applicable";
+// which kinds make it applicable belongs to the layer that owns the kind.
+func TestGateProjectionKindStaysOpaque(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range []string{
+		`{"gate_id":"gate-1","kind":"harness.open_url","opened_event_id":"event-42","opened_journal_seq":42,"deadline":"2026-08-29T20:00:00Z","answerability":"resident","prompt":{}}`,
+		`{"gate_id":"gate-1","kind":"some.future.runtime.kind","opened_event_id":"event-42","opened_journal_seq":42,"deadline":"2026-08-29T20:00:00Z","answerability":"resident","prompt":{}}`,
+	} {
+		var projection sessionwire.GateProjection
+		if err := json.Unmarshal([]byte(body), &projection); err != nil {
+			t.Errorf("GateProjection rejected an opaque gate kind: %s: %v", body, err)
 		}
 	}
 }

@@ -473,9 +473,6 @@ func (p GateProjection) Validate() error {
 	if p.Kind == "" {
 		return invalidRequest(RequestValidationCodeMissingField, "kind")
 	}
-	if p.Kind == "harness.open_url" && p.Prompt.Origin == "" {
-		return invalidRequest(RequestValidationCodeMissingField, "prompt.origin")
-	}
 	if err := p.OpenedEventID.Validate(); err != nil {
 		return invalidRequest(RequestValidationCodeInvalidField, "opened_event_id")
 	}
