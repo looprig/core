@@ -191,15 +191,22 @@ func exportedGenDeclLines(decl *ast.GenDecl, render func(ast.Node) string) []str
 			if decl.Tok == token.CONST {
 				kind = "const"
 			}
-			for _, name := range typed.Names {
+			for index, name := range typed.Names {
 				if !name.IsExported() {
 					continue
 				}
+				line := fmt.Sprintf("%s %s", kind, name.Name)
 				if typed.Type != nil {
-					lines = append(lines, fmt.Sprintf("%s %s %s", kind, name.Name, render(typed.Type)))
-					continue
+					line += " " + render(typed.Type)
 				}
-				lines = append(lines, fmt.Sprintf("%s %s", kind, name.Name))
+				// The on-the-wire string literals are the whole point of this
+				// contract, so freeze the value as well as the name and type:
+				// renaming CommandStateAccepted's "accepted" or bumping
+				// CurrentWireVersion is a wire break, not an internal edit.
+				if index < len(typed.Values) {
+					line += " = " + render(typed.Values[index])
+				}
+				lines = append(lines, line)
 			}
 		}
 	}

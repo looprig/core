@@ -3,7 +3,23 @@ package v1
 import (
 	"encoding/json"
 	"net/url"
+	"strconv"
 	"time"
+)
+
+// Declared member lists. Each record names its members exactly once; the
+// marshaller, the decoder, and the extension capture all read the same slice.
+var (
+	hostLinkBindRequestMembers         = []string{"version", "tenant_id", "session_id", "host_id", "host_generation", "lease_epoch", "runtime_compatibility_id", "idempotency_key"}
+	hostLinkUnbindRequestMembers       = []string{"version", "tenant_id", "session_id", "host_id", "host_generation", "lease_epoch", "idempotency_key"}
+	hostLinkCommandDeliveryMembers     = []string{"command_id"}
+	hostLinkCapacityReportMembers      = []string{"version", "host_id", "host_generation", "agent_id", "runtime_compatibility_id", "placement", "internal_endpoint", "isolation_class", "accepting", "available_capacity", "observed_at", "expires_at"}
+	hostLinkRegistryObservationMembers = []string{"version", "tenant_id", "session_id", "host_id", "host_generation", "agent_id", "runtime_compatibility_id", "placement", "internal_endpoint", "residency", "accepting", "lease_epoch", "observed_at", "expires_at"}
+	hostLinkDrainRequestMembers        = []string{"version", "host_id", "host_generation", "idempotency_key", "tenant_id", "session_id"}
+	hostLinkDrainObservationMembers    = []string{"host_id", "host_generation", "drain_generation", "state", "tenant_id", "session_id"}
+	hostLinkErrorMembers               = []string{"code", "current_lease_epoch", "runtime_compatibility_id"}
+	versionNegotiationRequestMembers   = []string{"supported_versions"}
+	versionNegotiationResponseMembers  = []string{"version"}
 )
 
 // HostPlacement identifies the admission model for one Host advertisement.
@@ -32,27 +48,30 @@ const (
 type InternalEndpoint string
 
 // Validate reports whether endpoint is a bounded, credential-free WebSocket
-// endpoint suitable for HostLink discovery.
+// endpoint suitable for HostLink discovery. Every failure is reported as a
+// *RequestValidationError naming the internal_endpoint member, so a caller can
+// branch on Code instead of matching error text: an absent endpoint reports
+// RequestValidationCodeMissingField and every malformed or credential-bearing
+// spelling reports RequestValidationCodeInvalidField.
 func (endpoint InternalEndpoint) Validate() error {
+	if endpoint == "" {
+		return invalidRequest(RequestValidationCodeMissingField, "internal_endpoint")
+	}
 	if err := validateID(string(endpoint)); err != nil {
-		return err
+		return invalidRequest(RequestValidationCodeInvalidField, "internal_endpoint")
 	}
 	parsed, err := url.Parse(string(endpoint))
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.Hostname() == "" || parsed.Opaque != "" {
-		return invalidEndpointError{}
+		return invalidRequest(RequestValidationCodeInvalidField, "internal_endpoint")
 	}
 	if parsed.Scheme != "ws" && parsed.Scheme != "wss" {
-		return invalidEndpointError{}
+		return invalidRequest(RequestValidationCodeInvalidField, "internal_endpoint")
 	}
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
-		return invalidEndpointError{}
+		return invalidRequest(RequestValidationCodeInvalidField, "internal_endpoint")
 	}
 	return nil
 }
-
-type invalidEndpointError struct{}
-
-func (invalidEndpointError) Error() string { return "invalid internal endpoint" }
 
 // HostLinkBindRequest establishes one Factory-local route to a Host-owned
 // session. It is a routing optimization, not proof of ownership: the Host
@@ -93,7 +112,7 @@ func (r HostLinkBindRequest) MarshalJSON() ([]byte, error) {
 	if err := r.Validate(); err != nil {
 		return nil, err
 	}
-	return marshalHostLinkFields(map[string]any{
+	return marshalHostLinkFields(hostLinkBindRequestMembers, map[string]any{
 		"version":                  r.Version,
 		"tenant_id":                r.TenantID,
 		"session_id":               r.SessionID,
@@ -108,7 +127,7 @@ func (r HostLinkBindRequest) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON fails closed because a bind is authenticated control-plane
 // input; unknown members cannot become a future attach/create workflow.
 func (r *HostLinkBindRequest) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "version", "tenant_id", "session_id", "host_id", "host_generation", "lease_epoch", "runtime_compatibility_id", "idempotency_key")
+	fields, err := decodeRequestFields(data, hostLinkBindRequestMembers...)
 	if err != nil {
 		return err
 	}
@@ -194,7 +213,7 @@ func (r HostLinkUnbindRequest) MarshalJSON() ([]byte, error) {
 	if err := r.Validate(); err != nil {
 		return nil, err
 	}
-	return marshalHostLinkFields(map[string]any{
+	return marshalHostLinkFields(hostLinkUnbindRequestMembers, map[string]any{
 		"version":         r.Version,
 		"tenant_id":       r.TenantID,
 		"session_id":      r.SessionID,
@@ -206,7 +225,7 @@ func (r HostLinkUnbindRequest) MarshalJSON() ([]byte, error) {
 }
 
 func (r *HostLinkUnbindRequest) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "version", "tenant_id", "session_id", "host_id", "host_generation", "lease_epoch", "idempotency_key")
+	fields, err := decodeRequestFields(data, hostLinkUnbindRequestMembers...)
 	if err != nil {
 		return err
 	}
@@ -274,11 +293,11 @@ func (d HostLinkCommandDelivery) MarshalJSON() ([]byte, error) {
 	if err := d.Validate(); err != nil {
 		return nil, err
 	}
-	return marshalHostLinkFields(map[string]any{"command_id": d.CommandID})
+	return marshalHostLinkFields(hostLinkCommandDeliveryMembers, map[string]any{"command_id": d.CommandID})
 }
 
 func (d *HostLinkCommandDelivery) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "command_id")
+	fields, err := decodeRequestFields(data, hostLinkCommandDeliveryMembers...)
 	if err != nil {
 		return err
 	}
@@ -345,7 +364,7 @@ func (r HostLinkCapacityReport) MarshalJSON() ([]byte, error) {
 	if err := r.Validate(); err != nil {
 		return nil, err
 	}
-	return marshalHostLinkFields(map[string]any{
+	return marshalHostLinkFields(hostLinkCapacityReportMembers, map[string]any{
 		"version":                  r.Version,
 		"host_id":                  r.HostID,
 		"host_generation":          r.HostGeneration,
@@ -356,13 +375,13 @@ func (r HostLinkCapacityReport) MarshalJSON() ([]byte, error) {
 		"isolation_class":          r.IsolationClass,
 		"accepting":                r.Accepting,
 		"available_capacity":       r.AvailableCapacity,
-		"observed_at":              r.ObservedAt,
-		"expires_at":               r.ExpiresAt,
+		"observed_at":              r.ObservedAt.UTC(),
+		"expires_at":               r.ExpiresAt.UTC(),
 	})
 }
 
 func (r *HostLinkCapacityReport) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "version", "host_id", "host_generation", "agent_id", "runtime_compatibility_id", "placement", "internal_endpoint", "isolation_class", "accepting", "available_capacity", "observed_at", "expires_at")
+	fields, err := decodeRequestFields(data, hostLinkCapacityReportMembers...)
 	if err != nil {
 		return err
 	}
@@ -492,7 +511,7 @@ func (r HostLinkRegistryObservation) MarshalJSON() ([]byte, error) {
 	if err := r.Validate(); err != nil {
 		return nil, err
 	}
-	return marshalHostLinkFields(map[string]any{
+	return marshalHostLinkFields(hostLinkRegistryObservationMembers, map[string]any{
 		"version":                  r.Version,
 		"tenant_id":                r.TenantID,
 		"session_id":               r.SessionID,
@@ -505,13 +524,13 @@ func (r HostLinkRegistryObservation) MarshalJSON() ([]byte, error) {
 		"residency":                r.Residency,
 		"accepting":                r.Accepting,
 		"lease_epoch":              r.LeaseEpoch,
-		"observed_at":              r.ObservedAt,
-		"expires_at":               r.ExpiresAt,
+		"observed_at":              r.ObservedAt.UTC(),
+		"expires_at":               r.ExpiresAt.UTC(),
 	})
 }
 
 func (r *HostLinkRegistryObservation) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "version", "tenant_id", "session_id", "host_id", "host_generation", "agent_id", "runtime_compatibility_id", "placement", "internal_endpoint", "residency", "accepting", "lease_epoch", "observed_at", "expires_at")
+	fields, err := decodeRequestFields(data, hostLinkRegistryObservationMembers...)
 	if err != nil {
 		return err
 	}
@@ -635,11 +654,11 @@ func (r HostLinkDrainRequest) MarshalJSON() ([]byte, error) {
 		fields["tenant_id"] = r.TenantID
 		fields["session_id"] = r.SessionID
 	}
-	return marshalHostLinkFields(fields)
+	return marshalHostLinkFields(hostLinkDrainRequestMembers, fields)
 }
 
 func (r *HostLinkDrainRequest) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "version", "host_id", "host_generation", "idempotency_key", "tenant_id", "session_id")
+	fields, err := decodeRequestFields(data, hostLinkDrainRequestMembers...)
 	if err != nil {
 		return err
 	}
@@ -742,13 +761,13 @@ func (o HostLinkDrainObservation) MarshalJSON() ([]byte, error) {
 		fields["tenant_id"] = o.TenantID
 		fields["session_id"] = o.SessionID
 	}
-	return marshalHostLinkFields(fields)
+	return marshalHostLinkFields(hostLinkDrainObservationMembers, fields)
 }
 
 // UnmarshalJSON stays strict because this internal observation is a control
 // boundary, not a public projection that may proxy additive fields.
 func (o *HostLinkDrainObservation) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "host_id", "host_generation", "drain_generation", "state", "tenant_id", "session_id")
+	fields, err := decodeRequestFields(data, hostLinkDrainObservationMembers...)
 	if err != nil {
 		return err
 	}
@@ -860,11 +879,11 @@ func (e HostLinkError) MarshalJSON() ([]byte, error) {
 	if e.RuntimeCompatibilityID != "" {
 		fields["runtime_compatibility_id"] = e.RuntimeCompatibilityID
 	}
-	return marshalHostLinkFields(fields)
+	return marshalHostLinkFields(hostLinkErrorMembers, fields)
 }
 
 func (e *HostLinkError) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "code", "current_lease_epoch", "runtime_compatibility_id")
+	fields, err := decodeRequestFields(data, hostLinkErrorMembers...)
 	if err != nil {
 		return err
 	}
@@ -930,11 +949,11 @@ func (r VersionNegotiationRequest) MarshalJSON() ([]byte, error) {
 	for index, version := range r.SupportedVersions {
 		versions[index] = uint16(version)
 	}
-	return marshalHostLinkFields(map[string]any{"supported_versions": versions})
+	return marshalHostLinkFields(versionNegotiationRequestMembers, map[string]any{"supported_versions": versions})
 }
 
 func (r *VersionNegotiationRequest) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "supported_versions")
+	fields, err := decodeRequestFields(data, versionNegotiationRequestMembers...)
 	if err != nil {
 		return err
 	}
@@ -942,9 +961,21 @@ func (r *VersionNegotiationRequest) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	var versions []WireVersion
-	if err := json.Unmarshal(rawVersions, &versions); err != nil || versions == nil {
+	// WireVersion is a uint8, so a []WireVersion is a []byte to encoding/json:
+	// decoding a JSON *string* into one takes the base64 path and would accept
+	// "AQ==" as [1] on the very first record a HostLink exchanges. Decode the
+	// advertised list as JSON numbers and range-check each one back down.
+	var rawNumbers []json.Number
+	if err := json.Unmarshal(rawVersions, &rawNumbers); err != nil || rawNumbers == nil {
 		return invalidRequest(RequestValidationCodeInvalidField, "supported_versions")
+	}
+	versions := make([]WireVersion, 0, len(rawNumbers))
+	for _, number := range rawNumbers {
+		value, err := strconv.ParseUint(number.String(), 10, 8)
+		if err != nil {
+			return invalidRequest(RequestValidationCodeInvalidField, "supported_versions")
+		}
+		versions = append(versions, WireVersion(value))
 	}
 	decoded := VersionNegotiationRequest{SupportedVersions: versions}
 	if err := decoded.Validate(); err != nil {
@@ -981,13 +1012,13 @@ func (r VersionNegotiationResponse) MarshalJSON() ([]byte, error) {
 	if err := putJSONField(fields, "version", r.Version); err != nil {
 		return nil, err
 	}
-	return marshalResponseFields(fields, r.extensions)
+	return marshalResponseFields(versionNegotiationResponseMembers, fields, r.extensions)
 }
 
 func (r *VersionNegotiationResponse) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, versionNegotiationResponseMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	version, err := decodeHostLinkVersion(fields)
 	if err != nil {
@@ -995,7 +1026,7 @@ func (r *VersionNegotiationResponse) UnmarshalJSON(data []byte) error {
 	}
 	decoded := VersionNegotiationResponse{
 		Version:    version,
-		extensions: captureExtensions(fields, "version"),
+		extensions: captureExtensions(fields, versionNegotiationResponseMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -1081,11 +1112,10 @@ func validateHostIsolationClass(class HostIsolationClass) error {
 	}
 }
 
+// validateHostLinkEndpoint forwards to InternalEndpoint.Validate, which already
+// reports the stable internal_endpoint code pair this record needs.
 func validateHostLinkEndpoint(endpoint InternalEndpoint) error {
-	if err := endpoint.Validate(); err != nil {
-		return invalidRequest(RequestValidationCodeInvalidField, "internal_endpoint")
-	}
-	return nil
+	return endpoint.Validate()
 }
 
 func validateHostLinkTimes(observedAt, expiresAt time.Time) error {
@@ -1107,14 +1137,17 @@ func validHostLinkRegistryResidency(residency SessionResidency) bool {
 	}
 }
 
-func marshalHostLinkFields(values map[string]any) ([]byte, error) {
+// marshalHostLinkFields emits one strict HostLink control record. HostLink
+// records carry no forward-compatible extensions, so the only thing left to
+// check is that every emitted member is one the record declares.
+func marshalHostLinkFields(members []string, values map[string]any) ([]byte, error) {
 	fields := make(map[string]json.RawMessage, len(values))
 	for name, value := range values {
 		if err := putJSONField(fields, name, value); err != nil {
 			return nil, err
 		}
 	}
-	return marshalResponseFields(fields, responseExtensions{})
+	return marshalResponseFields(members, fields, responseExtensions{})
 }
 
 func decodeHostLinkVersion(fields map[string]json.RawMessage) (WireVersion, error) {

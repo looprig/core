@@ -6,6 +6,15 @@ import (
 	"errors"
 )
 
+// Declared member lists. Each record names its members exactly once; the
+// marshaller, the decoder, and the extension capture all read the same slice.
+var (
+	enduringPublicationMembers  = []string{sessionRecordTypeMember, "tenant_id", "session_id", "event_id", "journal_seq", "covered_through", "body"}
+	ephemeralPublicationMembers = []string{sessionRecordTypeMember, "tenant_id", "session_id", "body"}
+	journalTipMembers           = []string{sessionRecordTypeMember, "tenant_id", "session_id", "journal_tip"}
+	sessionResetMembers         = []string{sessionRecordTypeMember, "tenant_id", "session_id", "last_contiguous", "journal_tip"}
+)
+
 // SessionRecordType is the stable wire name of a record carried on the
 // tenant-scoped session channel `session:{tid}:{sid}` (specification 8.1). One
 // subscriber receives every publication, repair hint, and repair control on that
@@ -49,9 +58,9 @@ func (t SessionRecordType) valid() bool {
 // record so a subscriber can dispatch before decoding. It fails closed on a
 // missing, non-string, or unrecognized discriminator rather than guessing.
 func SessionRecordTypeOf(data []byte) (SessionRecordType, error) {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, sessionRecordTypeMember)
 	if err != nil {
-		return "", invalidJSONObject(err)
+		return "", err
 	}
 	return decodeSessionRecordType(fields)
 }
@@ -163,15 +172,15 @@ func (p EnduringPublication) MarshalJSON() ([]byte, error) {
 		}
 	}
 	fields["body"] = cloneJSON(p.Body)
-	return marshalResponseFields(fields, p.extensions)
+	return marshalResponseFields(enduringPublicationMembers, fields, p.extensions)
 }
 
 // UnmarshalJSON decodes a public enduring publication while retaining unknown
 // additive envelope members and the exact canonical event body bytes.
 func (p *EnduringPublication) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, enduringPublicationMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	if err := requireSessionRecordType(fields, SessionRecordTypeEnduringPublication); err != nil {
 		return err
@@ -210,7 +219,7 @@ func (p *EnduringPublication) UnmarshalJSON(data []byte) error {
 		JournalSeq:     journalSeq,
 		CoveredThrough: coveredThrough,
 		Body:           body,
-		extensions:     captureExtensions(fields, sessionRecordTypeMember, "tenant_id", "session_id", "event_id", "journal_seq", "covered_through", "body"),
+		extensions:     captureExtensions(fields, enduringPublicationMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -290,15 +299,15 @@ func (p EphemeralPublication) MarshalJSON() ([]byte, error) {
 		}
 	}
 	fields["body"] = cloneJSON(p.Body)
-	return marshalResponseFields(fields, p.extensions)
+	return marshalResponseFields(ephemeralPublicationMembers, fields, p.extensions)
 }
 
 // UnmarshalJSON rejects a durable identity or sequence on an ephemeral record
 // rather than allowing an unsequenced delta to masquerade as replayable data.
 func (p *EphemeralPublication) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, ephemeralPublicationMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	if err := requireSessionRecordType(fields, SessionRecordTypeEphemeralPublication); err != nil {
 		return err
@@ -324,7 +333,7 @@ func (p *EphemeralPublication) UnmarshalJSON(data []byte) error {
 		TenantID:   tenantID,
 		SessionID:  sessionID,
 		Body:       body,
-		extensions: captureExtensions(fields, sessionRecordTypeMember, "tenant_id", "session_id", "body"),
+		extensions: captureExtensions(fields, ephemeralPublicationMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -382,13 +391,13 @@ func (h JournalTip) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 	}
-	return marshalResponseFields(fields, h.extensions)
+	return marshalResponseFields(journalTipMembers, fields, h.extensions)
 }
 
 func (h *JournalTip) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, journalTipMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	if err := requireSessionRecordType(fields, SessionRecordTypeJournalTip); err != nil {
 		return err
@@ -409,7 +418,7 @@ func (h *JournalTip) UnmarshalJSON(data []byte) error {
 		TenantID:   tenantID,
 		SessionID:  sessionID,
 		Tip:        tip,
-		extensions: captureExtensions(fields, sessionRecordTypeMember, "tenant_id", "session_id", "journal_tip"),
+		extensions: captureExtensions(fields, journalTipMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -473,13 +482,13 @@ func (r SessionReset) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 	}
-	return marshalResponseFields(fields, r.extensions)
+	return marshalResponseFields(sessionResetMembers, fields, r.extensions)
 }
 
 func (r *SessionReset) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, sessionResetMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	if err := requireSessionRecordType(fields, SessionRecordTypeSessionReset); err != nil {
 		return err
@@ -505,7 +514,7 @@ func (r *SessionReset) UnmarshalJSON(data []byte) error {
 		SessionID:      sessionID,
 		LastContiguous: lastContiguous,
 		JournalTip:     tip,
-		extensions:     captureExtensions(fields, sessionRecordTypeMember, "tenant_id", "session_id", "last_contiguous", "journal_tip"),
+		extensions:     captureExtensions(fields, sessionResetMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err

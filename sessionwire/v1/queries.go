@@ -5,6 +5,20 @@ import (
 	"time"
 )
 
+// Declared member lists. Each record names its members exactly once; the
+// marshaller, the decoder, and the extension capture all read the same slice.
+var (
+	agentCapabilitySummaryMembers      = []string{"agent_id", "runtime_compatibility_id", "capabilities"}
+	departmentCapabilitySummaryMembers = []string{"agents"}
+	sessionSummaryMembers              = []string{"session_id", "agent_id", "state", "title", "created_at", "last_active_at"}
+	sessionStatusMembers               = []string{"session_id", "agent_id", "state", "residency", "journal_tip", "waiting_gate_id", "updated_at"}
+	sessionPageMembers                 = []string{"sessions", "next_cursor", "previous_cursor"}
+	journalEventMembers                = []string{"event_id", "journal_seq", "body"}
+	journalPageMembers                 = []string{"events", "journal_tip", "covered_through", "next_cursor", "previous_cursor"}
+	objectReferenceMembers             = []string{"object_id"}
+	objectMetadataMembers              = []string{"reference", "size_bytes", "media_type", "digest", "created_at"}
+)
+
 // Cursor is an opaque, server-issued page token. Clients may retain and return
 // it but must not derive ordering, tenancy, or authority from its contents.
 type Cursor string
@@ -51,13 +65,13 @@ func (s AgentCapabilitySummary) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 	}
-	return marshalResponseFields(fields, s.extensions)
+	return marshalResponseFields(agentCapabilitySummaryMembers, fields, s.extensions)
 }
 
 func (s *AgentCapabilitySummary) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, agentCapabilitySummaryMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	agentID, err := decodeAgentID(fields, "agent_id")
 	if err != nil {
@@ -77,7 +91,7 @@ func (s *AgentCapabilitySummary) UnmarshalJSON(data []byte) error {
 		AgentID:                agentID,
 		RuntimeCompatibilityID: runtimeCompatibilityID,
 		Capabilities:           capabilities,
-		extensions:             captureExtensions(fields, "agent_id", "runtime_compatibility_id", "capabilities"),
+		extensions:             captureExtensions(fields, agentCapabilitySummaryMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -117,13 +131,13 @@ func (s DepartmentCapabilitySummary) MarshalJSON() ([]byte, error) {
 	if err := putJSONField(fields, "agents", nonNilSlice(s.Agents)); err != nil {
 		return nil, err
 	}
-	return marshalResponseFields(fields, s.extensions)
+	return marshalResponseFields(departmentCapabilitySummaryMembers, fields, s.extensions)
 }
 
 func (s *DepartmentCapabilitySummary) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, departmentCapabilitySummaryMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	rawAgents, err := decodeRequiredRawField(fields, "agents")
 	if err != nil {
@@ -135,7 +149,7 @@ func (s *DepartmentCapabilitySummary) UnmarshalJSON(data []byte) error {
 	}
 	decoded := DepartmentCapabilitySummary{
 		Agents:     agents,
-		extensions: captureExtensions(fields, "agents"),
+		extensions: captureExtensions(fields, departmentCapabilitySummaryMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -227,20 +241,20 @@ func (s SessionSummary) MarshalJSON() ([]byte, error) {
 		}
 	}
 	if !s.CreatedAt.IsZero() {
-		if err := putJSONField(fields, "created_at", s.CreatedAt); err != nil {
+		if err := putJSONField(fields, "created_at", s.CreatedAt.UTC()); err != nil {
 			return nil, err
 		}
 	}
-	if err := putJSONField(fields, "last_active_at", s.LastActiveAt); err != nil {
+	if err := putJSONField(fields, "last_active_at", s.LastActiveAt.UTC()); err != nil {
 		return nil, err
 	}
-	return marshalResponseFields(fields, s.extensions)
+	return marshalResponseFields(sessionSummaryMembers, fields, s.extensions)
 }
 
 func (s *SessionSummary) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, sessionSummaryMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	sessionID, err := decodeSessionID(fields, "session_id")
 	if err != nil {
@@ -268,14 +282,9 @@ func (s *SessionSummary) UnmarshalJSON(data []byte) error {
 			return invalidRequest(RequestValidationCodeInvalidField, "title")
 		}
 	}
-	var createdAt time.Time
-	if raw, ok := fields["created_at"]; ok {
-		if isJSONNull(raw) {
-			return invalidRequest(RequestValidationCodeInvalidField, "created_at")
-		}
-		if err := json.Unmarshal(raw, &createdAt); err != nil {
-			return invalidRequest(RequestValidationCodeInvalidField, "created_at")
-		}
+	createdAt, err := decodeOptionalTime(fields, "created_at")
+	if err != nil {
+		return err
 	}
 	decoded := SessionSummary{
 		SessionID:    sessionID,
@@ -284,7 +293,7 @@ func (s *SessionSummary) UnmarshalJSON(data []byte) error {
 		Title:        title,
 		CreatedAt:    createdAt,
 		LastActiveAt: lastActiveAt,
-		extensions:   captureExtensions(fields, "session_id", "agent_id", "state", "title", "created_at", "last_active_at"),
+		extensions:   captureExtensions(fields, sessionSummaryMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -357,17 +366,17 @@ func (s SessionStatus) MarshalJSON() ([]byte, error) {
 		}
 	}
 	if !s.UpdatedAt.IsZero() {
-		if err := putJSONField(fields, "updated_at", s.UpdatedAt); err != nil {
+		if err := putJSONField(fields, "updated_at", s.UpdatedAt.UTC()); err != nil {
 			return nil, err
 		}
 	}
-	return marshalResponseFields(fields, s.extensions)
+	return marshalResponseFields(sessionStatusMembers, fields, s.extensions)
 }
 
 func (s *SessionStatus) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, sessionStatusMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	sessionID, err := decodeSessionID(fields, "session_id")
 	if err != nil {
@@ -397,11 +406,9 @@ func (s *SessionStatus) UnmarshalJSON(data []byte) error {
 		}
 		waitingGateID = GateID(value)
 	}
-	var updatedAt time.Time
-	if raw, ok := fields["updated_at"]; ok {
-		if isJSONNull(raw) || json.Unmarshal(raw, &updatedAt) != nil {
-			return invalidRequest(RequestValidationCodeInvalidField, "updated_at")
-		}
+	updatedAt, err := decodeOptionalTime(fields, "updated_at")
+	if err != nil {
+		return err
 	}
 	decoded := SessionStatus{
 		SessionID:     sessionID,
@@ -411,7 +418,7 @@ func (s *SessionStatus) UnmarshalJSON(data []byte) error {
 		JournalTip:    journalTip,
 		WaitingGateID: waitingGateID,
 		UpdatedAt:     updatedAt,
-		extensions:    captureExtensions(fields, "session_id", "agent_id", "state", "residency", "journal_tip", "waiting_gate_id", "updated_at"),
+		extensions:    captureExtensions(fields, sessionStatusMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -467,13 +474,13 @@ func (p SessionPage) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 	}
-	return marshalResponseFields(fields, p.extensions)
+	return marshalResponseFields(sessionPageMembers, fields, p.extensions)
 }
 
 func (p *SessionPage) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, sessionPageMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	rawSessions, err := decodeRequiredRawField(fields, "sessions")
 	if err != nil {
@@ -495,7 +502,7 @@ func (p *SessionPage) UnmarshalJSON(data []byte) error {
 		Sessions:       sessions,
 		NextCursor:     next,
 		PreviousCursor: previous,
-		extensions:     captureExtensions(fields, "sessions", "next_cursor", "previous_cursor"),
+		extensions:     captureExtensions(fields, sessionPageMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -549,13 +556,13 @@ func (e JournalEvent) MarshalJSON() ([]byte, error) {
 	if err := putJSONField(fields, "body", e.Body); err != nil {
 		return nil, err
 	}
-	return marshalResponseFields(fields, e.extensions)
+	return marshalResponseFields(journalEventMembers, fields, e.extensions)
 }
 
 func (e *JournalEvent) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, journalEventMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	eventID, err := decodeOptionalEventID(fields, "event_id")
 	if err != nil || eventID == "" {
@@ -576,7 +583,7 @@ func (e *JournalEvent) UnmarshalJSON(data []byte) error {
 		EventID:    eventID,
 		JournalSeq: journalSeq,
 		Body:       body,
-		extensions: captureExtensions(fields, "event_id", "journal_seq", "body"),
+		extensions: captureExtensions(fields, journalEventMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -647,13 +654,13 @@ func (p JournalPage) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 	}
-	return marshalResponseFields(fields, p.extensions)
+	return marshalResponseFields(journalPageMembers, fields, p.extensions)
 }
 
 func (p *JournalPage) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, journalPageMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	rawEvents, err := decodeRequiredRawField(fields, "events")
 	if err != nil {
@@ -685,7 +692,7 @@ func (p *JournalPage) UnmarshalJSON(data []byte) error {
 		CoveredThrough: coveredThrough,
 		NextCursor:     next,
 		PreviousCursor: previous,
-		extensions:     captureExtensions(fields, "events", "journal_tip", "covered_through", "next_cursor", "previous_cursor"),
+		extensions:     captureExtensions(fields, journalPageMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -704,18 +711,22 @@ type ObjectReference struct {
 	ObjectID string `json:"object_id"`
 }
 
-// UnmarshalJSON rejects malformed JSON string encodings before an object
-// reference can cross the redaction boundary with normalized text.
+// UnmarshalJSON decodes an object reference through the same member decoder as
+// every other record, so a duplicate member is rejected here too rather than
+// leaving two parsers free to disagree about which copy wins on a redaction
+// boundary. The deliberate redaction drop is unchanged: a member this version
+// does not declare is discarded rather than retained and re-emitted, so a
+// provider URL, credential, or object byte payload cannot be proxied.
 func (r *ObjectReference) UnmarshalJSON(data []byte) error {
-	if err := validateStrictJSON(data); err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
-	}
-	type objectReference ObjectReference
-	var decoded objectReference
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	fields, err := decodeContractFields(data, objectReferenceMembers...)
+	if err != nil {
 		return err
 	}
-	*r = ObjectReference(decoded)
+	objectID, err := decodeOptionalString(fields, "object_id")
+	if err != nil {
+		return err
+	}
+	*r = ObjectReference{ObjectID: objectID}
 	return nil
 }
 
@@ -737,18 +748,48 @@ type ObjectMetadata struct {
 	CreatedAt time.Time       `json:"created_at,omitzero"`
 }
 
-// UnmarshalJSON rejects malformed JSON string encodings but otherwise retains
-// the ordinary object metadata decoding and its strict unknown-member drop.
+// UnmarshalJSON decodes object metadata through the same member decoder as every
+// other record — gaining duplicate-member rejection and the package's stable
+// typed errors — while keeping the deliberate unknown-member drop. Decoding the
+// members explicitly also keeps the promise that a validation error names fields
+// and never values: encoding/json's own type error embeds the offending literal.
 func (m *ObjectMetadata) UnmarshalJSON(data []byte) error {
-	if err := validateStrictJSON(data); err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
-	}
-	type objectMetadata ObjectMetadata
-	var decoded objectMetadata
-	if err := json.Unmarshal(data, &decoded); err != nil {
+	fields, err := decodeContractFields(data, objectMetadataMembers...)
+	if err != nil {
 		return err
 	}
-	*m = ObjectMetadata(decoded)
+	var reference ObjectReference
+	if raw, ok := fields["reference"]; ok {
+		if isJSONNull(raw) {
+			return invalidRequest(RequestValidationCodeInvalidField, "reference")
+		}
+		if err := json.Unmarshal(raw, &reference); err != nil {
+			return namedNestedValidationError(err, "reference")
+		}
+	}
+	sizeBytes, err := decodeOptionalUint64(fields, "size_bytes")
+	if err != nil {
+		return err
+	}
+	mediaType, err := decodeOptionalString(fields, "media_type")
+	if err != nil {
+		return err
+	}
+	digest, err := decodeOptionalString(fields, "digest")
+	if err != nil {
+		return err
+	}
+	createdAt, err := decodeOptionalTime(fields, "created_at")
+	if err != nil {
+		return err
+	}
+	*m = ObjectMetadata{
+		Reference: reference,
+		SizeBytes: sizeBytes,
+		MediaType: mediaType,
+		Digest:    digest,
+		CreatedAt: createdAt,
+	}
 	return nil
 }
 
@@ -771,6 +812,25 @@ func decodeRequiredTime(fields map[string]json.RawMessage, name string) (time.Ti
 	raw, ok := fields[name]
 	if !ok || isJSONNull(raw) {
 		return time.Time{}, invalidRequest(RequestValidationCodeMissingField, name)
+	}
+	var value time.Time
+	if err := json.Unmarshal(raw, &value); err != nil || value.IsZero() {
+		return time.Time{}, invalidRequest(RequestValidationCodeInvalidField, name)
+	}
+	return value, nil
+}
+
+// decodeOptionalTime decodes an absent-or-present timestamp member. A present
+// member must carry a real instant: the marshallers omit a zero time, so
+// accepting one here would let a record silently change shape across a single
+// decode/encode hop.
+func decodeOptionalTime(fields map[string]json.RawMessage, name string) (time.Time, error) {
+	raw, ok := fields[name]
+	if !ok {
+		return time.Time{}, nil
+	}
+	if isJSONNull(raw) {
+		return time.Time{}, invalidRequest(RequestValidationCodeInvalidField, name)
 	}
 	var value time.Time
 	if err := json.Unmarshal(raw, &value); err != nil || value.IsZero() {

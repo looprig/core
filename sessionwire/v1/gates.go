@@ -7,6 +7,18 @@ import (
 	"time"
 )
 
+// Declared member lists. Each record names its members exactly once; the
+// marshaller, the decoder, and the extension capture all read the same slice.
+var (
+	gatePromptOptionMembers = []string{"value", "label"}
+	gatePromptFieldMembers  = []string{"name", "label", "kind", "required", "options", "default"}
+	gatePromptSchemaMembers = []string{"fields"}
+	gateControlMembers      = []string{"action", "label"}
+	gatePromptMembers       = []string{"title", "body", "origin", "schema", "controls"}
+	gateProjectionMembers   = []string{"gate_id", "kind", "prompt", "opened_event_id", "opened_journal_seq", "deadline", "answerability"}
+	gatePageMembers         = []string{"journal_tip", "open_gate_count", "gates", "next_cursor", "previous_cursor"}
+)
+
 // GateAnswerability is the durable answerability projection. It is independent
 // from whether a historical prompt can be rendered: an open event alone does
 // not prove that an answer can still be accepted.
@@ -137,7 +149,7 @@ type GatePrompt struct {
 	Title    string           `json:"title,omitempty"`
 	Body     string           `json:"body,omitempty"`
 	Origin   string           `json:"origin,omitempty"`
-	Schema   GatePromptSchema `json:"schema,omitempty"`
+	Schema   GatePromptSchema `json:"schema"`
 	Controls []GateControl    `json:"controls,omitempty"`
 
 	extensions responseExtensions
@@ -156,31 +168,34 @@ func (o GatePromptOption) MarshalJSON() ([]byte, error) {
 	if err := putJSONField(fields, "label", o.Label); err != nil {
 		return nil, err
 	}
-	return marshalResponseFields(fields, o.extensions)
+	return marshalResponseFields(gatePromptOptionMembers, fields, o.extensions)
 }
 
 func (o *GatePromptOption) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
-	if err != nil {
-		return invalidJSONObject(err)
-	}
-	value, err := decodeOptionalResponseString(fields, "value")
+	fields, err := decodeContractFields(data, gatePromptOptionMembers...)
 	if err != nil {
 		return err
 	}
-	label, err := decodeOptionalResponseString(fields, "label")
+	value, err := decodeOptionalString(fields, "value")
+	if err != nil {
+		return err
+	}
+	label, err := decodeOptionalString(fields, "label")
 	if err != nil {
 		return err
 	}
 	*o = GatePromptOption{
 		Value:      value,
 		Label:      label,
-		extensions: captureExtensions(fields, "value", "label"),
+		extensions: captureExtensions(fields, gatePromptOptionMembers...),
 	}
 	return nil
 }
 
 func (f GatePromptField) MarshalJSON() ([]byte, error) {
+	if err := f.Validate(); err != nil {
+		return nil, err
+	}
 	fields := map[string]json.RawMessage{}
 	for name, value := range map[string]any{
 		"name":     f.Name,
@@ -202,23 +217,23 @@ func (f GatePromptField) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 	}
-	return marshalResponseFields(fields, f.extensions)
+	return marshalResponseFields(gatePromptFieldMembers, fields, f.extensions)
 }
 
 func (f *GatePromptField) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
-	if err != nil {
-		return invalidJSONObject(err)
-	}
-	name, err := decodeOptionalResponseString(fields, "name")
+	fields, err := decodeContractFields(data, gatePromptFieldMembers...)
 	if err != nil {
 		return err
 	}
-	label, err := decodeOptionalResponseString(fields, "label")
+	name, err := decodeOptionalString(fields, "name")
 	if err != nil {
 		return err
 	}
-	kind, err := decodeOptionalResponseString(fields, "kind")
+	label, err := decodeOptionalString(fields, "label")
+	if err != nil {
+		return err
+	}
+	kind, err := decodeOptionalString(fields, "kind")
 	if err != nil {
 		return err
 	}
@@ -246,25 +261,28 @@ func (f *GatePromptField) UnmarshalJSON(data []byte) error {
 		Required:   required,
 		Options:    options,
 		Default:    defaultValue,
-		extensions: captureExtensions(fields, "name", "label", "kind", "required", "options", "default"),
+		extensions: captureExtensions(fields, gatePromptFieldMembers...),
 	}
 	return nil
 }
 
 func (s GatePromptSchema) MarshalJSON() ([]byte, error) {
+	if err := s.Validate(); err != nil {
+		return nil, err
+	}
 	fields := map[string]json.RawMessage{}
 	if len(s.Fields) != 0 {
 		if err := putJSONField(fields, "fields", s.Fields); err != nil {
 			return nil, err
 		}
 	}
-	return marshalResponseFields(fields, s.extensions)
+	return marshalResponseFields(gatePromptSchemaMembers, fields, s.extensions)
 }
 
 func (s *GatePromptSchema) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, gatePromptSchemaMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	var promptFields []GatePromptField
 	if raw, ok := fields["fields"]; ok {
@@ -274,7 +292,7 @@ func (s *GatePromptSchema) UnmarshalJSON(data []byte) error {
 	}
 	*s = GatePromptSchema{
 		Fields:     promptFields,
-		extensions: captureExtensions(fields, "fields"),
+		extensions: captureExtensions(fields, gatePromptSchemaMembers...),
 	}
 	return nil
 }
@@ -287,31 +305,34 @@ func (c GateControl) MarshalJSON() ([]byte, error) {
 	if err := putJSONField(fields, "label", c.Label); err != nil {
 		return nil, err
 	}
-	return marshalResponseFields(fields, c.extensions)
+	return marshalResponseFields(gateControlMembers, fields, c.extensions)
 }
 
 func (c *GateControl) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
-	if err != nil {
-		return invalidJSONObject(err)
-	}
-	action, err := decodeOptionalResponseString(fields, "action")
+	fields, err := decodeContractFields(data, gateControlMembers...)
 	if err != nil {
 		return err
 	}
-	label, err := decodeOptionalResponseString(fields, "label")
+	action, err := decodeOptionalString(fields, "action")
+	if err != nil {
+		return err
+	}
+	label, err := decodeOptionalString(fields, "label")
 	if err != nil {
 		return err
 	}
 	*c = GateControl{
 		Action:     action,
 		Label:      label,
-		extensions: captureExtensions(fields, "action", "label"),
+		extensions: captureExtensions(fields, gateControlMembers...),
 	}
 	return nil
 }
 
 func (p GatePrompt) MarshalJSON() ([]byte, error) {
+	if err := p.Validate(); err != nil {
+		return nil, err
+	}
 	fields := map[string]json.RawMessage{}
 	if p.Title != "" {
 		if err := putJSONField(fields, "title", p.Title); err != nil {
@@ -336,23 +357,23 @@ func (p GatePrompt) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 	}
-	return marshalResponseFields(fields, p.extensions)
+	return marshalResponseFields(gatePromptMembers, fields, p.extensions)
 }
 
 func (p *GatePrompt) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
-	if err != nil {
-		return invalidJSONObject(err)
-	}
-	title, err := decodeOptionalResponseString(fields, "title")
+	fields, err := decodeContractFields(data, gatePromptMembers...)
 	if err != nil {
 		return err
 	}
-	body, err := decodeOptionalResponseString(fields, "body")
+	title, err := decodeOptionalString(fields, "title")
 	if err != nil {
 		return err
 	}
-	origin, err := decodeOptionalResponseString(fields, "origin")
+	body, err := decodeOptionalString(fields, "body")
+	if err != nil {
+		return err
+	}
+	origin, err := decodeOptionalString(fields, "origin")
 	if err != nil {
 		return err
 	}
@@ -374,12 +395,12 @@ func (p *GatePrompt) UnmarshalJSON(data []byte) error {
 		Origin:     origin,
 		Schema:     schema,
 		Controls:   controls,
-		extensions: captureExtensions(fields, "title", "body", "origin", "schema", "controls"),
+		extensions: captureExtensions(fields, gatePromptMembers...),
 	}
 	return nil
 }
 
-func decodeOptionalResponseString(fields map[string]json.RawMessage, name string) (string, error) {
+func decodeOptionalString(fields map[string]json.RawMessage, name string) (string, error) {
 	raw, ok := fields[name]
 	if !ok {
 		return "", nil
@@ -499,20 +520,20 @@ func (p GateProjection) MarshalJSON() ([]byte, error) {
 		"prompt":             p.Prompt,
 		"opened_event_id":    p.OpenedEventID,
 		"opened_journal_seq": p.OpenedJournalSeq,
-		"deadline":           p.Deadline,
+		"deadline":           p.Deadline.UTC(),
 		"answerability":      p.Answerability,
 	} {
 		if err := putJSONField(fields, name, value); err != nil {
 			return nil, err
 		}
 	}
-	return marshalResponseFields(fields, p.extensions)
+	return marshalResponseFields(gateProjectionMembers, fields, p.extensions)
 }
 
 func (p *GateProjection) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, gateProjectionMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	gateID, err := decodeGateID(fields, "gate_id")
 	if err != nil {
@@ -531,10 +552,10 @@ func (p *GateProjection) UnmarshalJSON(data []byte) error {
 		return invalidRequest(RequestValidationCodeInvalidField, "prompt")
 	}
 	openedEventID, err := decodeOptionalEventID(fields, "opened_event_id")
-	if err != nil || openedEventID == "" {
-		if err != nil {
-			return err
-		}
+	if err != nil {
+		return err
+	}
+	if openedEventID == "" {
 		return invalidRequest(RequestValidationCodeMissingField, "opened_event_id")
 	}
 	openedJournalSeq, err := decodeRequiredUint64(fields, "opened_journal_seq")
@@ -557,7 +578,7 @@ func (p *GateProjection) UnmarshalJSON(data []byte) error {
 		OpenedJournalSeq: openedJournalSeq,
 		Deadline:         deadline,
 		Answerability:    GateAnswerability(answerability),
-		extensions:       captureExtensions(fields, "gate_id", "kind", "prompt", "opened_event_id", "opened_journal_seq", "deadline", "answerability"),
+		extensions:       captureExtensions(fields, gateProjectionMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -627,13 +648,13 @@ func (p GatePage) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 	}
-	return marshalResponseFields(fields, p.extensions)
+	return marshalResponseFields(gatePageMembers, fields, p.extensions)
 }
 
 func (p *GatePage) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, gatePageMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	journalTip, err := decodeRequiredUint64(fields, "journal_tip")
 	if err != nil {
@@ -665,7 +686,7 @@ func (p *GatePage) UnmarshalJSON(data []byte) error {
 		Gates:          gates,
 		NextCursor:     next,
 		PreviousCursor: previous,
-		extensions:     captureExtensions(fields, "journal_tip", "open_gate_count", "gates", "next_cursor", "previous_cursor"),
+		extensions:     captureExtensions(fields, gatePageMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err

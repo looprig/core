@@ -71,7 +71,7 @@ func (id CommandID) Validate() error { return validateID(string(id)) }
 func (id *CommandID) UnmarshalJSON(data []byte) error {
 	value, err := decodeStrictJSONString(data)
 	if err != nil {
-		return err
+		return invalidRequest(RequestValidationCodeInvalidField, "command_id")
 	}
 	*id = CommandID(value)
 	return nil

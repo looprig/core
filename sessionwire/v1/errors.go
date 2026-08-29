@@ -57,6 +57,10 @@ const (
 	ErrorCodeRuntimeUnavailable  ErrorCode = "runtime_unavailable"
 )
 
+// errorDetailMembers is the single declared member list for ErrorDetail: the
+// marshaller, the decoder, and the extension capture all read it.
+var errorDetailMembers = []string{"code", "message", "retryable"}
+
 // ErrorDetail is the client-safe body of a stable error envelope.
 type ErrorDetail struct {
 	Code      ErrorCode `json:"code"`
@@ -96,13 +100,13 @@ func (e ErrorDetail) MarshalJSON() ([]byte, error) {
 	if err := putJSONField(fields, "retryable", e.Retryable); err != nil {
 		return nil, err
 	}
-	return marshalResponseFields(fields, e.extensions)
+	return marshalResponseFields(errorDetailMembers, fields, e.extensions)
 }
 
 func (e *ErrorDetail) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, errorDetailMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	code, err := decodeRequiredString(fields, "code")
 	if err != nil {
@@ -128,7 +132,7 @@ func (e *ErrorDetail) UnmarshalJSON(data []byte) error {
 		Code:       ErrorCode(code),
 		Message:    message,
 		Retryable:  retryable,
-		extensions: captureExtensions(fields, "code", "message", "retryable"),
+		extensions: captureExtensions(fields, errorDetailMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -136,6 +140,9 @@ func (e *ErrorDetail) UnmarshalJSON(data []byte) error {
 	*e = decoded
 	return nil
 }
+
+// errorEnvelopeMembers is the single declared member list for ErrorEnvelope.
+var errorEnvelopeMembers = []string{"error"}
 
 // ErrorEnvelope is a forward-compatible response envelope. Unknown additive
 // top-level fields are retained so a Core consumer can proxy a newer response
@@ -164,13 +171,13 @@ func (e ErrorEnvelope) MarshalJSON() ([]byte, error) {
 	if err := putJSONField(fields, "error", e.Error); err != nil {
 		return nil, err
 	}
-	return marshalResponseFields(fields, e.extensions)
+	return marshalResponseFields(errorEnvelopeMembers, fields, e.extensions)
 }
 
 func (e *ErrorEnvelope) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, errorEnvelopeMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	raw, ok := fields["error"]
 	if !ok || isJSONNull(raw) {
@@ -183,7 +190,7 @@ func (e *ErrorEnvelope) UnmarshalJSON(data []byte) error {
 	if err := detail.Validate(); err != nil {
 		return err
 	}
-	*e = ErrorEnvelope{Error: detail, extensions: captureExtensions(fields, "error")}
+	*e = ErrorEnvelope{Error: detail, extensions: captureExtensions(fields, errorEnvelopeMembers...)}
 	return nil
 }
 
@@ -226,7 +233,16 @@ func captureExtensions(fields map[string]json.RawMessage, known ...string) respo
 	return responseExtensions{fields: &extensions}
 }
 
-func marshalResponseFields(fields map[string]json.RawMessage, extensions responseExtensions) ([]byte, error) {
+// marshalResponseFields emits one record from its single declared member list.
+// members is the same []string the record's decoder passes to decodeContractFields
+// and captureExtensions, so a member added on one side and forgotten on the other
+// is caught here instead of silently colliding with a retained extension.
+func marshalResponseFields(members []string, fields map[string]json.RawMessage, extensions responseExtensions) ([]byte, error) {
+	for name := range fields {
+		if !isContractMember(members, name) {
+			return nil, fmt.Errorf("sessionwire/v1: marshalled member %q is absent from the record's declared member list", name)
+		}
+	}
 	if extensions.fields != nil {
 		for name, value := range *extensions.fields {
 			if _, exists := fields[name]; exists {
@@ -238,6 +254,15 @@ func marshalResponseFields(fields map[string]json.RawMessage, extensions respons
 	return json.Marshal(fields)
 }
 
+func isContractMember(members []string, name string) bool {
+	for _, member := range members {
+		if member == name {
+			return true
+		}
+	}
+	return false
+}
+
 func putJSONField(fields map[string]json.RawMessage, name string, value any) error {
 	data, err := json.Marshal(value)
 	if err != nil {
@@ -247,11 +272,10 @@ func putJSONField(fields map[string]json.RawMessage, name string, value any) err
 	return nil
 }
 
-// structuralFieldName echoes a wire member name only when it has the shape of a
-// contract member. RequestValidationError.Field is documented to name fields and
-// never caller-supplied values, and an object member name is otherwise arbitrary
-// caller bytes, so anything outside that conservative shape is reported as an
-// unnamed duplicate rather than reflected into a public error string.
+// structuralFieldName is a first, shape-only filter on a wire member name. It is
+// not sufficient on its own — an AWS key ID is spelled entirely in [A-Z0-9] — so
+// decodeContractFields additionally checks the surviving name against the
+// record's declared member list before it can reach a public error string.
 func structuralFieldName(name string) string {
 	if name == "" || len(name) > 64 {
 		return ""
@@ -291,6 +315,42 @@ func invalidNestedJSONObject(err error, member string) error {
 		return invalidRequest(validation.Code, member)
 	}
 	return invalidRequest(RequestValidationCodeInvalidField, member)
+}
+
+// decodeContractFields decodes one record body into its object members and maps
+// any structural failure onto the stable public vocabulary. members is the
+// record's declared member list: a duplicate of a member this version defines is
+// named, because that name is contract text, and a duplicate of any other member
+// is reported unnamed, because an arbitrary object member name is caller-chosen
+// bytes that RequestValidationError.Field promises never to echo.
+func decodeContractFields(data []byte, members ...string) (map[string]json.RawMessage, error) {
+	fields, err := decodeJSONObject(data)
+	if err != nil {
+		return nil, redactUnknownMemberName(invalidJSONObject(err), members)
+	}
+	return fields, nil
+}
+
+func redactUnknownMemberName(err error, members []string) error {
+	var validation *RequestValidationError
+	if !errors.As(err, &validation) || validation.Field == "" || isContractMember(members, validation.Field) {
+		return err
+	}
+	return invalidRequest(validation.Code, "")
+}
+
+// namedNestedValidationError attributes an already-typed, already-redacted
+// nested decode failure to the enclosing contract member when the nested decoder
+// could not name a member of its own.
+func namedNestedValidationError(err error, member string) error {
+	var validation *RequestValidationError
+	if !errors.As(err, &validation) {
+		return invalidRequest(RequestValidationCodeInvalidField, member)
+	}
+	if validation.Field == "" {
+		return invalidRequest(validation.Code, member)
+	}
+	return validation
 }
 
 func decodeJSONObject(data []byte) (map[string]json.RawMessage, error) {

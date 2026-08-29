@@ -6,6 +6,17 @@ import (
 	"unicode/utf8"
 )
 
+// Declared member lists. Each record names its members exactly once; the
+// marshaller, the decoder, and the extension capture all read the same slice.
+var (
+	createRequestMembers       = []string{"version", "command_id", "session_id", "agent_id", "blocks"}
+	inputRequestMembers        = []string{"version", "command_id", "session_id", "blocks"}
+	interruptRequestMembers    = []string{"version", "command_id", "session_id"}
+	restoreRequestMembers      = []string{"version", "command_id", "session_id"}
+	gateResponseRequestMembers = []string{"version", "command_id", "session_id", "gate_id", "action", "values", "expected_open_event_id", "expected_open_journal_seq"}
+	commandStatusMembers       = []string{"command_id", "status", "accepted_order", "error"}
+)
+
 // CommandEnvelope is common to every state-changing V1 request. CommandID is
 // client-generated and retry-stable; Version is the Looprig wire version, not a
 // transport or broker version.
@@ -58,7 +69,7 @@ func (r CreateRequest) Validate() error {
 // records fail closed on unknown, duplicate, missing, or structurally invalid
 // required members.
 func (r *CreateRequest) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "version", "command_id", "session_id", "agent_id", "blocks")
+	fields, err := decodeRequestFields(data, createRequestMembers...)
 	if err != nil {
 		return err
 	}
@@ -108,7 +119,7 @@ func (r InputRequest) Validate() error {
 
 // UnmarshalJSON strictly decodes an input request.
 func (r *InputRequest) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "version", "command_id", "session_id", "blocks")
+	fields, err := decodeRequestFields(data, inputRequestMembers...)
 	if err != nil {
 		return err
 	}
@@ -152,7 +163,7 @@ func (r InterruptRequest) Validate() error {
 
 // UnmarshalJSON strictly decodes an interrupt request.
 func (r *InterruptRequest) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "version", "command_id", "session_id")
+	fields, err := decodeRequestFields(data, interruptRequestMembers...)
 	if err != nil {
 		return err
 	}
@@ -194,7 +205,7 @@ func (r RestoreRequest) Validate() error {
 
 // UnmarshalJSON strictly decodes a compatibility restore request.
 func (r *RestoreRequest) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "version", "command_id", "session_id")
+	fields, err := decodeRequestFields(data, restoreRequestMembers...)
 	if err != nil {
 		return err
 	}
@@ -271,7 +282,7 @@ func (r GateResponseRequest) Validate() error {
 
 // UnmarshalJSON strictly decodes a gate response request.
 func (r *GateResponseRequest) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "version", "command_id", "session_id", "gate_id", "action", "values", "expected_open_event_id", "expected_open_journal_seq")
+	fields, err := decodeRequestFields(data, gateResponseRequestMembers...)
 	if err != nil {
 		return err
 	}
@@ -394,13 +405,13 @@ func (s CommandStatus) MarshalJSON() ([]byte, error) {
 			return nil, err
 		}
 	}
-	return marshalResponseFields(fields, s.extensions)
+	return marshalResponseFields(commandStatusMembers, fields, s.extensions)
 }
 
 func (s *CommandStatus) UnmarshalJSON(data []byte) error {
-	fields, err := decodeJSONObject(data)
+	fields, err := decodeContractFields(data, commandStatusMembers...)
 	if err != nil {
-		return invalidJSONObject(err)
+		return err
 	}
 	commandID, err := decodeCommandID(fields, "command_id")
 	if err != nil {
@@ -430,7 +441,7 @@ func (s *CommandStatus) UnmarshalJSON(data []byte) error {
 		State:         CommandState(state),
 		AcceptedOrder: acceptedOrder,
 		Error:         detail,
-		extensions:    captureExtensions(fields, "command_id", "status", "accepted_order", "error"),
+		extensions:    captureExtensions(fields, commandStatusMembers...),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -439,17 +450,17 @@ func (s *CommandStatus) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func decodeRequestFields(data []byte, known ...string) (map[string]json.RawMessage, error) {
-	fields, err := decodeJSONObject(data)
+// decodeRequestFields decodes a strict request record: every member must be one
+// the record declares. members is the record's declared member list, so a
+// duplicate of an undeclared member is reported unnamed for the same reason an
+// unknown member is.
+func decodeRequestFields(data []byte, members ...string) (map[string]json.RawMessage, error) {
+	fields, err := decodeContractFields(data, members...)
 	if err != nil {
-		return nil, invalidJSONObject(err)
-	}
-	allowed := make(map[string]struct{}, len(known))
-	for _, name := range known {
-		allowed[name] = struct{}{}
+		return nil, err
 	}
 	for name := range fields {
-		if _, ok := allowed[name]; !ok {
+		if !isContractMember(members, name) {
 			return nil, invalidRequest(RequestValidationCodeUnknownField, "")
 		}
 	}

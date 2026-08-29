@@ -1,66 +1,66 @@
-const CommandIDFramingCodeFieldTooLong CommandIDFramingCode
-const CommandIDFramingCodeTooManyFields CommandIDFramingCode
-const CommandStateAccepted CommandState
-const CommandStateApplied CommandState
-const CommandStatePending CommandState
-const CommandStateRejected CommandState
-const CurrentWireVersion WireVersion
-const ErrorCodeCommandRejected ErrorCode
-const ErrorCodeGateExpired ErrorCode
-const ErrorCodeGateNotResumable ErrorCode
-const ErrorCodeGateResolved ErrorCode
-const ErrorCodeGateResponseInvalid ErrorCode
-const ErrorCodeInvalidRequest ErrorCode
-const ErrorCodeRuntimeUnavailable ErrorCode
-const ErrorCodeSessionNotFound ErrorCode
-const ErrorCodeUnsupportedVersion ErrorCode
-const GateAnswerabilityExpired GateAnswerability
-const GateAnswerabilityResident GateAnswerability
-const GateAnswerabilitySubmitted GateAnswerability
-const GateAnswerabilitySuspended GateAnswerability
-const GateAnswerabilityUnavailable GateAnswerability
-const GateFieldKindConfirm GateFieldKind
-const GateFieldKindMultiSelect GateFieldKind
-const GateFieldKindSelect GateFieldKind
-const GateFieldKindText GateFieldKind
-const HostIsolationClassCrossTenantIsolated HostIsolationClass
-const HostIsolationClassTenantExclusive HostIsolationClass
-const HostLinkDrainStateDrained HostLinkDrainState
-const HostLinkDrainStateDraining HostLinkDrainState
-const HostLinkErrorEpochMismatch HostLinkErrorCode
-const HostLinkErrorNoCapacity HostLinkErrorCode
-const HostLinkErrorNotAdmitting HostLinkErrorCode
-const HostLinkErrorReleasing HostLinkErrorCode
-const HostLinkErrorRuntimeMismatch HostLinkErrorCode
-const HostLinkErrorRuntimeUnavailable HostLinkErrorCode
-const HostPlacementDedicated HostPlacement
-const HostPlacementPooled HostPlacement
-const IDValidationCodeEmpty IDValidationCode
-const IDValidationCodeInvalidUTF8 IDValidationCode
-const IDValidationCodeTooLong IDValidationCode
-const MaxIDBytes
-const RequestValidationCodeDuplicateField RequestValidationCode
-const RequestValidationCodeInvalidField RequestValidationCode
-const RequestValidationCodeInvalidJSON RequestValidationCode
-const RequestValidationCodeMissingField RequestValidationCode
-const RequestValidationCodeUnknownField RequestValidationCode
-const RequestValidationCodeUnsupportedVersion RequestValidationCode
-const SessionRecordTypeEnduringPublication SessionRecordType
-const SessionRecordTypeEphemeralPublication SessionRecordType
-const SessionRecordTypeJournalTip SessionRecordType
-const SessionRecordTypeSessionReset SessionRecordType
-const SessionResidencyAttaching SessionResidency
-const SessionResidencyCold SessionResidency
-const SessionResidencyReleasing SessionResidency
-const SessionResidencyResident SessionResidency
-const SessionStateFailed SessionState
-const SessionStateIdle SessionState
-const SessionStateInterrupted SessionState
-const SessionStateRestoring SessionState
-const SessionStateRunning SessionState
-const SessionStateStopped SessionState
-const SessionStateSuspended SessionState
-const SessionStateWaitingOnGate SessionState
+const CommandIDFramingCodeFieldTooLong CommandIDFramingCode = "field_too_long"
+const CommandIDFramingCodeTooManyFields CommandIDFramingCode = "too_many_fields"
+const CommandStateAccepted CommandState = "accepted"
+const CommandStateApplied CommandState = "applied"
+const CommandStatePending CommandState = "pending"
+const CommandStateRejected CommandState = "rejected"
+const CurrentWireVersion WireVersion = 1
+const ErrorCodeCommandRejected ErrorCode = "command_rejected"
+const ErrorCodeGateExpired ErrorCode = "gate_expired"
+const ErrorCodeGateNotResumable ErrorCode = "gate_not_resumable"
+const ErrorCodeGateResolved ErrorCode = "gate_resolved"
+const ErrorCodeGateResponseInvalid ErrorCode = "gate_response_invalid"
+const ErrorCodeInvalidRequest ErrorCode = "invalid_request"
+const ErrorCodeRuntimeUnavailable ErrorCode = "runtime_unavailable"
+const ErrorCodeSessionNotFound ErrorCode = "session_not_found"
+const ErrorCodeUnsupportedVersion ErrorCode = "unsupported_version"
+const GateAnswerabilityExpired GateAnswerability = "expired"
+const GateAnswerabilityResident GateAnswerability = "resident"
+const GateAnswerabilitySubmitted GateAnswerability = "submitted"
+const GateAnswerabilitySuspended GateAnswerability = "suspended"
+const GateAnswerabilityUnavailable GateAnswerability = "unavailable"
+const GateFieldKindConfirm GateFieldKind = "confirm"
+const GateFieldKindMultiSelect GateFieldKind = "multi_select"
+const GateFieldKindSelect GateFieldKind = "select"
+const GateFieldKindText GateFieldKind = "text"
+const HostIsolationClassCrossTenantIsolated HostIsolationClass = "cross_tenant_isolated"
+const HostIsolationClassTenantExclusive HostIsolationClass = "tenant_exclusive"
+const HostLinkDrainStateDrained HostLinkDrainState = "drained"
+const HostLinkDrainStateDraining HostLinkDrainState = "draining"
+const HostLinkErrorEpochMismatch HostLinkErrorCode = "epoch_mismatch"
+const HostLinkErrorNoCapacity HostLinkErrorCode = "no_capacity"
+const HostLinkErrorNotAdmitting HostLinkErrorCode = "not_admitting"
+const HostLinkErrorReleasing HostLinkErrorCode = "releasing"
+const HostLinkErrorRuntimeMismatch HostLinkErrorCode = "runtime_mismatch"
+const HostLinkErrorRuntimeUnavailable HostLinkErrorCode = "runtime_unavailable"
+const HostPlacementDedicated HostPlacement = "dedicated"
+const HostPlacementPooled HostPlacement = "pooled"
+const IDValidationCodeEmpty IDValidationCode = "empty"
+const IDValidationCodeInvalidUTF8 IDValidationCode = "invalid_utf8"
+const IDValidationCodeTooLong IDValidationCode = "too_long"
+const MaxIDBytes = 256
+const RequestValidationCodeDuplicateField RequestValidationCode = "duplicate_field"
+const RequestValidationCodeInvalidField RequestValidationCode = "invalid_field"
+const RequestValidationCodeInvalidJSON RequestValidationCode = "invalid_json"
+const RequestValidationCodeMissingField RequestValidationCode = "missing_required_field"
+const RequestValidationCodeUnknownField RequestValidationCode = "unknown_field"
+const RequestValidationCodeUnsupportedVersion RequestValidationCode = "unsupported_version"
+const SessionRecordTypeEnduringPublication SessionRecordType = "enduring_publication"
+const SessionRecordTypeEphemeralPublication SessionRecordType = "ephemeral_publication"
+const SessionRecordTypeJournalTip SessionRecordType = "journal_tip"
+const SessionRecordTypeSessionReset SessionRecordType = "session.reset"
+const SessionResidencyAttaching SessionResidency = "attaching"
+const SessionResidencyCold SessionResidency = "cold"
+const SessionResidencyReleasing SessionResidency = "releasing"
+const SessionResidencyResident SessionResidency = "resident"
+const SessionStateFailed SessionState = "failed"
+const SessionStateIdle SessionState = "idle"
+const SessionStateInterrupted SessionState = "interrupted"
+const SessionStateRestoring SessionState = "restoring"
+const SessionStateRunning SessionState = "running"
+const SessionStateStopped SessionState = "stopped"
+const SessionStateSuspended SessionState = "suspended"
+const SessionStateWaitingOnGate SessionState = "waiting_on_gate"
 field AgentCapabilitySummary.AgentID AgentID `json:"agent_id"`
 field AgentCapabilitySummary.Capabilities []string `json:"capabilities,omitempty"`
 field AgentCapabilitySummary.RuntimeCompatibilityID string `json:"runtime_compatibility_id"`
@@ -106,7 +106,7 @@ field GateProjection.Prompt GatePrompt `json:"prompt"`
 field GatePrompt.Body string `json:"body,omitempty"`
 field GatePrompt.Controls []GateControl `json:"controls,omitempty"`
 field GatePrompt.Origin string `json:"origin,omitempty"`
-field GatePrompt.Schema GatePromptSchema `json:"schema,omitempty"`
+field GatePrompt.Schema GatePromptSchema `json:"schema"`
 field GatePrompt.Title string `json:"title,omitempty"`
 field GatePromptField.Default json.RawMessage `json:"default,omitempty"`
 field GatePromptField.Kind GateFieldKind `json:"kind"`
