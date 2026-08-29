@@ -88,7 +88,7 @@ func (f GatePromptField) Validate() error {
 	if !f.Kind.valid() {
 		return invalidRequest(RequestValidationCodeInvalidField, "prompt.schema.fields.kind")
 	}
-	if len(f.Default) != 0 && !json.Valid(f.Default) {
+	if len(f.Default) != 0 && validateStrictJSON(f.Default) != nil {
 		return invalidRequest(RequestValidationCodeInvalidField, "prompt.schema.fields.default")
 	}
 	return nil
@@ -234,7 +234,7 @@ func (f *GatePromptField) UnmarshalJSON(data []byte) error {
 	}
 	var defaultValue json.RawMessage
 	if raw, ok := fields["default"]; ok {
-		if isJSONNull(raw) || !json.Valid(raw) {
+		if isJSONNull(raw) || validateStrictJSON(raw) != nil {
 			return invalidRequest(RequestValidationCodeInvalidField, "prompt.schema.fields.default")
 		}
 		defaultValue = cloneJSON(raw)
@@ -387,8 +387,8 @@ func decodeOptionalResponseString(fields map[string]json.RawMessage, name string
 	if isJSONNull(raw) {
 		return "", invalidRequest(RequestValidationCodeInvalidField, name)
 	}
-	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
+	value, err := decodeStrictJSONString(raw)
+	if err != nil {
 		return "", invalidRequest(RequestValidationCodeInvalidField, name)
 	}
 	return value, nil

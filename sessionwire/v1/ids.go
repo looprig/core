@@ -66,6 +66,17 @@ func (id HostID) Validate() error { return validateID(string(id)) }
 // Validate reports whether id is a permitted opaque command identity.
 func (id CommandID) Validate() error { return validateID(string(id)) }
 
+// UnmarshalJSON rejects malformed JSON string encodings before they can be
+// normalized into a different command identity by encoding/json.
+func (id *CommandID) UnmarshalJSON(data []byte) error {
+	value, err := decodeStrictJSONString(data)
+	if err != nil {
+		return err
+	}
+	*id = CommandID(value)
+	return nil
+}
+
 // Validate reports whether id is a permitted opaque event identity.
 func (id EventID) Validate() error { return validateID(string(id)) }
 

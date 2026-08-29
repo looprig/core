@@ -3,6 +3,7 @@ package v1
 import (
 	"encoding/json"
 	"strings"
+	"unicode/utf8"
 )
 
 // CommandEnvelope is common to every state-changing V1 request. CommandID is
@@ -261,7 +262,7 @@ func (r GateResponseRequest) Validate() error {
 		return invalidRequest(RequestValidationCodeInvalidField, "expected_open_version")
 	}
 	for name, value := range r.Values {
-		if name == "" || !json.Valid(value) {
+		if name == "" || !utf8.ValidString(name) || validateStrictJSON(value) != nil {
 			return invalidRequest(RequestValidationCodeInvalidField, "values")
 		}
 	}
@@ -531,8 +532,8 @@ func decodeOptionalEventID(fields map[string]json.RawMessage, name string) (Even
 	if isJSONNull(raw) {
 		return "", invalidRequest(RequestValidationCodeInvalidField, name)
 	}
-	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
+	value, err := decodeStrictJSONString(raw)
+	if err != nil {
 		return "", invalidRequest(RequestValidationCodeInvalidField, name)
 	}
 	id := EventID(value)
@@ -547,8 +548,8 @@ func decodeRequiredString(fields map[string]json.RawMessage, name string) (strin
 	if !ok || isJSONNull(raw) {
 		return "", invalidRequest(RequestValidationCodeMissingField, name)
 	}
-	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
+	value, err := decodeStrictJSONString(raw)
+	if err != nil {
 		return "", invalidRequest(RequestValidationCodeInvalidField, name)
 	}
 	return value, nil
@@ -559,7 +560,7 @@ func decodeRequiredRawField(fields map[string]json.RawMessage, name string) (jso
 	if !ok || isJSONNull(raw) {
 		return nil, invalidRequest(RequestValidationCodeMissingField, name)
 	}
-	if !json.Valid(raw) {
+	if validateStrictJSON(raw) != nil {
 		return nil, invalidRequest(RequestValidationCodeInvalidField, name)
 	}
 	return cloneJSON(raw), nil
@@ -570,7 +571,7 @@ func decodeOptionalRawField(fields map[string]json.RawMessage, name string) (jso
 	if !ok {
 		return nil, nil
 	}
-	if isJSONNull(raw) || !json.Valid(raw) {
+	if isJSONNull(raw) || validateStrictJSON(raw) != nil {
 		return nil, invalidRequest(RequestValidationCodeInvalidField, name)
 	}
 	return cloneJSON(raw), nil
@@ -601,7 +602,7 @@ func decodeRawValues(fields map[string]json.RawMessage) (map[string]json.RawMess
 		return nil, invalidRequest(RequestValidationCodeInvalidField, "values")
 	}
 	for name, value := range values {
-		if name == "" || !json.Valid(value) {
+		if name == "" || !utf8.ValidString(name) || validateStrictJSON(value) != nil {
 			return nil, invalidRequest(RequestValidationCodeInvalidField, "values")
 		}
 		values[name] = cloneJSON(value)
@@ -610,7 +611,7 @@ func decodeRawValues(fields map[string]json.RawMessage) (map[string]json.RawMess
 }
 
 func validateBlocks(raw json.RawMessage, field string) error {
-	if len(raw) == 0 || !json.Valid(raw) || isJSONNull(raw) {
+	if len(raw) == 0 || validateStrictJSON(raw) != nil || isJSONNull(raw) {
 		return invalidRequest(RequestValidationCodeInvalidField, field)
 	}
 	var blocks []json.RawMessage

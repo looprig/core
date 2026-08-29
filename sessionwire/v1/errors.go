@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"unicode/utf8"
 )
 
 // RequestValidationCode is a stable, transport-neutral reason a request record
@@ -108,7 +109,11 @@ func (e *ErrorDetail) UnmarshalJSON(data []byte) error {
 	}
 	var message string
 	if raw, ok := fields["message"]; ok {
-		if isJSONNull(raw) || json.Unmarshal(raw, &message) != nil {
+		if isJSONNull(raw) {
+			return invalidRequest(RequestValidationCodeInvalidField, "message")
+		}
+		message, err = decodeStrictJSONString(raw)
+		if err != nil {
 			return invalidRequest(RequestValidationCodeInvalidField, "message")
 		}
 	}
@@ -242,6 +247,9 @@ func putJSONField(fields map[string]json.RawMessage, name string, value any) err
 }
 
 func decodeJSONObject(data []byte) (map[string]json.RawMessage, error) {
+	if err := validateStrictJSON(data); err != nil {
+		return nil, err
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	token, err := decoder.Token()
 	if err != nil {
@@ -290,6 +298,112 @@ func decodeJSONObject(data []byte) (map[string]json.RawMessage, error) {
 
 func isJSONNull(data []byte) bool {
 	return bytes.Equal(bytes.TrimSpace(data), []byte("null"))
+}
+
+// validateStrictJSON rejects JSON strings that encoding/json otherwise accepts
+// by replacing malformed UTF-8 or unpaired UTF-16 surrogate escapes with U+FFFD.
+// Callers use it before decoding strings or retaining RawMessage bytes so a wire
+// value cannot change identity while it crosses the Core boundary.
+func validateStrictJSON(data []byte) error {
+	if !json.Valid(data) {
+		return fmt.Errorf("invalid JSON")
+	}
+	for offset := 0; offset < len(data); {
+		if data[offset] != '"' {
+			offset++
+			continue
+		}
+		next, err := scanStrictJSONString(data, offset)
+		if err != nil {
+			return err
+		}
+		offset = next
+	}
+	return nil
+}
+
+func scanStrictJSONString(data []byte, offset int) (int, error) {
+	for offset++; offset < len(data); {
+		switch data[offset] {
+		case '"':
+			return offset + 1, nil
+		case '\\':
+			if offset+1 >= len(data) {
+				return 0, fmt.Errorf("invalid JSON string escape")
+			}
+			switch data[offset+1] {
+			case '"', '\\', '/', 'b', 'f', 'n', 'r', 't':
+				offset += 2
+			case 'u':
+				unit, ok := decodeJSONUTF16Unit(data, offset+2)
+				if !ok {
+					return 0, fmt.Errorf("invalid JSON unicode escape")
+				}
+				offset += 6
+				switch {
+				case unit >= 0xd800 && unit <= 0xdbff:
+					if offset+1 >= len(data) || data[offset] != '\\' || data[offset+1] != 'u' {
+						return 0, fmt.Errorf("unpaired JSON high surrogate")
+					}
+					low, ok := decodeJSONUTF16Unit(data, offset+2)
+					if !ok || low < 0xdc00 || low > 0xdfff {
+						return 0, fmt.Errorf("unpaired JSON high surrogate")
+					}
+					offset += 6
+				case unit >= 0xdc00 && unit <= 0xdfff:
+					return 0, fmt.Errorf("unpaired JSON low surrogate")
+				}
+			default:
+				return 0, fmt.Errorf("invalid JSON string escape")
+			}
+		default:
+			if data[offset] < 0x20 {
+				return 0, fmt.Errorf("invalid JSON control character")
+			}
+			if data[offset] < utf8.RuneSelf {
+				offset++
+				continue
+			}
+			_, size := utf8.DecodeRune(data[offset:])
+			if size == 1 {
+				return 0, fmt.Errorf("invalid JSON UTF-8")
+			}
+			offset += size
+		}
+	}
+	return 0, fmt.Errorf("unterminated JSON string")
+}
+
+func decodeJSONUTF16Unit(data []byte, offset int) (uint16, bool) {
+	if offset+4 > len(data) {
+		return 0, false
+	}
+	var unit uint16
+	for _, value := range data[offset : offset+4] {
+		unit <<= 4
+		switch {
+		case value >= '0' && value <= '9':
+			unit |= uint16(value - '0')
+		case value >= 'a' && value <= 'f':
+			unit |= uint16(value-'a') + 10
+		case value >= 'A' && value <= 'F':
+			unit |= uint16(value-'A') + 10
+		default:
+			return 0, false
+		}
+	}
+	return unit, true
+}
+
+func decodeStrictJSONString(data []byte) (string, error) {
+	if err := validateStrictJSON(data); err != nil {
+		return "", err
+	}
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return "", err
+	}
+	return value, nil
 }
 
 func cloneJSON(data json.RawMessage) json.RawMessage {

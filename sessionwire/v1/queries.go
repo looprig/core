@@ -260,7 +260,11 @@ func (s *SessionSummary) UnmarshalJSON(data []byte) error {
 	}
 	var title string
 	if raw, ok := fields["title"]; ok {
-		if isJSONNull(raw) || json.Unmarshal(raw, &title) != nil {
+		if isJSONNull(raw) {
+			return invalidRequest(RequestValidationCodeInvalidField, "title")
+		}
+		title, err = decodeStrictJSONString(raw)
+		if err != nil {
 			return invalidRequest(RequestValidationCodeInvalidField, "title")
 		}
 	}
@@ -525,7 +529,7 @@ func (e JournalEvent) Validate() error {
 	if e.JournalSeq == 0 {
 		return invalidRequest(RequestValidationCodeInvalidField, "journal_seq")
 	}
-	if len(e.Body) == 0 || isJSONNull(e.Body) || !json.Valid(e.Body) {
+	if len(e.Body) == 0 || isJSONNull(e.Body) || validateStrictJSON(e.Body) != nil {
 		return invalidRequest(RequestValidationCodeInvalidField, "body")
 	}
 	return nil
@@ -700,6 +704,21 @@ type ObjectReference struct {
 	ObjectID string `json:"object_id"`
 }
 
+// UnmarshalJSON rejects malformed JSON string encodings before an object
+// reference can cross the redaction boundary with normalized text.
+func (r *ObjectReference) UnmarshalJSON(data []byte) error {
+	if err := validateStrictJSON(data); err != nil {
+		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+	}
+	type objectReference ObjectReference
+	var decoded objectReference
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*r = ObjectReference(decoded)
+	return nil
+}
+
 // Validate reports whether the logical reference is bounded opaque UTF-8.
 func (r ObjectReference) Validate() error {
 	if err := validateID(r.ObjectID); err != nil {
@@ -716,6 +735,21 @@ type ObjectMetadata struct {
 	MediaType string          `json:"media_type,omitempty"`
 	Digest    string          `json:"digest,omitempty"`
 	CreatedAt time.Time       `json:"created_at,omitzero"`
+}
+
+// UnmarshalJSON rejects malformed JSON string encodings but otherwise retains
+// the ordinary object metadata decoding and its strict unknown-member drop.
+func (m *ObjectMetadata) UnmarshalJSON(data []byte) error {
+	if err := validateStrictJSON(data); err != nil {
+		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+	}
+	type objectMetadata ObjectMetadata
+	var decoded objectMetadata
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*m = ObjectMetadata(decoded)
+	return nil
 }
 
 // Validate reports whether metadata has a safe logical reference.
@@ -753,8 +787,8 @@ func decodeOptionalCursor(fields map[string]json.RawMessage, name string) (Curso
 	if isJSONNull(raw) {
 		return "", invalidRequest(RequestValidationCodeInvalidField, name)
 	}
-	var value string
-	if err := json.Unmarshal(raw, &value); err != nil {
+	value, err := decodeStrictJSONString(raw)
+	if err != nil {
 		return "", invalidRequest(RequestValidationCodeInvalidField, name)
 	}
 	return Cursor(value), nil
