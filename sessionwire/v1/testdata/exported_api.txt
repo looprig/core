@@ -1,0 +1,446 @@
+const CommandIDFramingCodeFieldTooLong CommandIDFramingCode
+const CommandIDFramingCodeTooManyFields CommandIDFramingCode
+const CommandStateAccepted CommandState
+const CommandStateApplied CommandState
+const CommandStatePending CommandState
+const CommandStateRejected CommandState
+const CurrentWireVersion WireVersion
+const ErrorCodeCommandRejected ErrorCode
+const ErrorCodeGateExpired ErrorCode
+const ErrorCodeGateNotResumable ErrorCode
+const ErrorCodeGateResolved ErrorCode
+const ErrorCodeGateResponseInvalid ErrorCode
+const ErrorCodeInvalidRequest ErrorCode
+const ErrorCodeRuntimeUnavailable ErrorCode
+const ErrorCodeSessionNotFound ErrorCode
+const ErrorCodeUnsupportedVersion ErrorCode
+const GateAnswerabilityExpired GateAnswerability
+const GateAnswerabilityResident GateAnswerability
+const GateAnswerabilitySubmitted GateAnswerability
+const GateAnswerabilitySuspended GateAnswerability
+const GateAnswerabilityUnavailable GateAnswerability
+const GateFieldKindConfirm GateFieldKind
+const GateFieldKindMultiSelect GateFieldKind
+const GateFieldKindSelect GateFieldKind
+const GateFieldKindText GateFieldKind
+const HostIsolationClassCrossTenantIsolated HostIsolationClass
+const HostIsolationClassTenantExclusive HostIsolationClass
+const HostLinkDrainStateDrained HostLinkDrainState
+const HostLinkDrainStateDraining HostLinkDrainState
+const HostLinkErrorEpochMismatch HostLinkErrorCode
+const HostLinkErrorNoCapacity HostLinkErrorCode
+const HostLinkErrorNotAdmitting HostLinkErrorCode
+const HostLinkErrorReleasing HostLinkErrorCode
+const HostLinkErrorRuntimeMismatch HostLinkErrorCode
+const HostLinkErrorRuntimeUnavailable HostLinkErrorCode
+const HostPlacementDedicated HostPlacement
+const HostPlacementPooled HostPlacement
+const IDValidationCodeEmpty IDValidationCode
+const IDValidationCodeInvalidUTF8 IDValidationCode
+const IDValidationCodeTooLong IDValidationCode
+const MaxIDBytes
+const RequestValidationCodeDuplicateField RequestValidationCode
+const RequestValidationCodeInvalidField RequestValidationCode
+const RequestValidationCodeInvalidJSON RequestValidationCode
+const RequestValidationCodeMissingField RequestValidationCode
+const RequestValidationCodeUnknownField RequestValidationCode
+const RequestValidationCodeUnsupportedVersion RequestValidationCode
+const SessionRecordTypeEnduringPublication SessionRecordType
+const SessionRecordTypeEphemeralPublication SessionRecordType
+const SessionRecordTypeJournalTip SessionRecordType
+const SessionRecordTypeSessionReset SessionRecordType
+const SessionResidencyAttaching SessionResidency
+const SessionResidencyCold SessionResidency
+const SessionResidencyReleasing SessionResidency
+const SessionResidencyResident SessionResidency
+const SessionStateFailed SessionState
+const SessionStateIdle SessionState
+const SessionStateInterrupted SessionState
+const SessionStateRestoring SessionState
+const SessionStateRunning SessionState
+const SessionStateStopped SessionState
+const SessionStateSuspended SessionState
+const SessionStateWaitingOnGate SessionState
+field AgentCapabilitySummary.AgentID AgentID `json:"agent_id"`
+field AgentCapabilitySummary.Capabilities []string `json:"capabilities,omitempty"`
+field AgentCapabilitySummary.RuntimeCompatibilityID string `json:"runtime_compatibility_id"`
+field CommandEnvelope.CommandID CommandID `json:"command_id"`
+field CommandEnvelope.Version WireVersion `json:"version"`
+field CommandIDFramingError.Code CommandIDFramingCode
+field CommandStatus.AcceptedOrder uint64 `json:"accepted_order,omitempty"`
+field CommandStatus.CommandID CommandID `json:"command_id"`
+field CommandStatus.Error *ErrorDetail `json:"error,omitempty"`
+field CommandStatus.State CommandState `json:"status"`
+field CreateRequest.AgentID AgentID `json:"agent_id"`
+field CreateRequest.Blocks json.RawMessage `json:"blocks,omitempty"`
+field CreateRequest.CommandEnvelope CommandEnvelope
+field CreateRequest.SessionID SessionID `json:"session_id"`
+field DepartmentCapabilitySummary.Agents []AgentCapabilitySummary `json:"agents"`
+field EnduringPublication.Body json.RawMessage `json:"body"`
+field EnduringPublication.CoveredThrough uint64 `json:"covered_through"`
+field EnduringPublication.EventID EventID `json:"event_id"`
+field EnduringPublication.JournalSeq uint64 `json:"journal_seq"`
+field EnduringPublication.SessionID SessionID `json:"session_id"`
+field EnduringPublication.TenantID TenantID `json:"tenant_id"`
+field EphemeralPublication.Body json.RawMessage `json:"body"`
+field EphemeralPublication.SessionID SessionID `json:"session_id"`
+field EphemeralPublication.TenantID TenantID `json:"tenant_id"`
+field ErrorDetail.Code ErrorCode `json:"code"`
+field ErrorDetail.Message string `json:"message,omitempty"`
+field ErrorDetail.Retryable bool `json:"retryable"`
+field ErrorEnvelope.Error ErrorDetail `json:"error"`
+field GateControl.Action string `json:"action"`
+field GateControl.Label string `json:"label"`
+field GatePage.Gates []GateProjection `json:"gates"`
+field GatePage.JournalTip uint64 `json:"journal_tip"`
+field GatePage.NextCursor Cursor `json:"next_cursor,omitempty"`
+field GatePage.OpenGateCount uint64 `json:"open_gate_count"`
+field GatePage.PreviousCursor Cursor `json:"previous_cursor,omitempty"`
+field GateProjection.Answerability GateAnswerability `json:"answerability"`
+field GateProjection.Deadline time.Time `json:"deadline"`
+field GateProjection.GateID GateID `json:"gate_id"`
+field GateProjection.Kind string `json:"kind"`
+field GateProjection.OpenedEventID EventID `json:"opened_event_id"`
+field GateProjection.OpenedJournalSeq uint64 `json:"opened_journal_seq"`
+field GateProjection.Prompt GatePrompt `json:"prompt"`
+field GatePrompt.Body string `json:"body,omitempty"`
+field GatePrompt.Controls []GateControl `json:"controls,omitempty"`
+field GatePrompt.Origin string `json:"origin,omitempty"`
+field GatePrompt.Schema GatePromptSchema `json:"schema,omitempty"`
+field GatePrompt.Title string `json:"title,omitempty"`
+field GatePromptField.Default json.RawMessage `json:"default,omitempty"`
+field GatePromptField.Kind GateFieldKind `json:"kind"`
+field GatePromptField.Label string `json:"label"`
+field GatePromptField.Name string `json:"name"`
+field GatePromptField.Options []GatePromptOption `json:"options,omitempty"`
+field GatePromptField.Required bool `json:"required"`
+field GatePromptOption.Label string `json:"label"`
+field GatePromptOption.Value string `json:"value"`
+field GatePromptSchema.Fields []GatePromptField `json:"fields,omitempty"`
+field GateResponseRequest.Action string `json:"action"`
+field GateResponseRequest.CommandEnvelope CommandEnvelope
+field GateResponseRequest.ExpectedOpenEventID EventID `json:"expected_open_event_id,omitempty"`
+field GateResponseRequest.ExpectedOpenJournalSeq uint64 `json:"expected_open_journal_seq,omitempty"`
+field GateResponseRequest.GateID GateID `json:"gate_id"`
+field GateResponseRequest.SessionID SessionID `json:"session_id"`
+field GateResponseRequest.Values map[string]json.RawMessage `json:"values"`
+field HostLinkBindRequest.HostGeneration uint64 `json:"host_generation"`
+field HostLinkBindRequest.HostID HostID `json:"host_id"`
+field HostLinkBindRequest.IdempotencyKey string `json:"idempotency_key"`
+field HostLinkBindRequest.LeaseEpoch uint64 `json:"lease_epoch"`
+field HostLinkBindRequest.RuntimeCompatibilityID string `json:"runtime_compatibility_id"`
+field HostLinkBindRequest.SessionID SessionID `json:"session_id"`
+field HostLinkBindRequest.TenantID TenantID `json:"tenant_id"`
+field HostLinkBindRequest.Version WireVersion `json:"version"`
+field HostLinkCapacityReport.Accepting bool `json:"accepting"`
+field HostLinkCapacityReport.AgentID AgentID `json:"agent_id"`
+field HostLinkCapacityReport.AvailableCapacity uint64 `json:"available_capacity"`
+field HostLinkCapacityReport.ExpiresAt time.Time `json:"expires_at"`
+field HostLinkCapacityReport.HostGeneration uint64 `json:"host_generation"`
+field HostLinkCapacityReport.HostID HostID `json:"host_id"`
+field HostLinkCapacityReport.InternalEndpoint InternalEndpoint `json:"internal_endpoint"`
+field HostLinkCapacityReport.IsolationClass HostIsolationClass `json:"isolation_class"`
+field HostLinkCapacityReport.ObservedAt time.Time `json:"observed_at"`
+field HostLinkCapacityReport.Placement HostPlacement `json:"placement"`
+field HostLinkCapacityReport.RuntimeCompatibilityID string `json:"runtime_compatibility_id"`
+field HostLinkCapacityReport.Version WireVersion `json:"version"`
+field HostLinkCommandDelivery.CommandID CommandID `json:"command_id"`
+field HostLinkDrainObservation.DrainGeneration uint64 `json:"drain_generation"`
+field HostLinkDrainObservation.HostGeneration uint64 `json:"host_generation"`
+field HostLinkDrainObservation.HostID HostID `json:"host_id"`
+field HostLinkDrainObservation.SessionID SessionID `json:"session_id,omitempty"`
+field HostLinkDrainObservation.State HostLinkDrainState `json:"state"`
+field HostLinkDrainObservation.TenantID TenantID `json:"tenant_id,omitempty"`
+field HostLinkDrainRequest.HostGeneration uint64 `json:"host_generation"`
+field HostLinkDrainRequest.HostID HostID `json:"host_id"`
+field HostLinkDrainRequest.IdempotencyKey string `json:"idempotency_key"`
+field HostLinkDrainRequest.SessionID SessionID `json:"session_id,omitempty"`
+field HostLinkDrainRequest.TenantID TenantID `json:"tenant_id,omitempty"`
+field HostLinkDrainRequest.Version WireVersion `json:"version"`
+field HostLinkError.Code HostLinkErrorCode `json:"code"`
+field HostLinkError.CurrentLeaseEpoch uint64 `json:"current_lease_epoch,omitempty"`
+field HostLinkError.RuntimeCompatibilityID string `json:"runtime_compatibility_id,omitempty"`
+field HostLinkRegistryObservation.Accepting bool `json:"accepting"`
+field HostLinkRegistryObservation.AgentID AgentID `json:"agent_id"`
+field HostLinkRegistryObservation.ExpiresAt time.Time `json:"expires_at"`
+field HostLinkRegistryObservation.HostGeneration uint64 `json:"host_generation"`
+field HostLinkRegistryObservation.HostID HostID `json:"host_id"`
+field HostLinkRegistryObservation.InternalEndpoint InternalEndpoint `json:"internal_endpoint"`
+field HostLinkRegistryObservation.LeaseEpoch uint64 `json:"lease_epoch"`
+field HostLinkRegistryObservation.ObservedAt time.Time `json:"observed_at"`
+field HostLinkRegistryObservation.Placement HostPlacement `json:"placement"`
+field HostLinkRegistryObservation.Residency SessionResidency `json:"residency"`
+field HostLinkRegistryObservation.RuntimeCompatibilityID string `json:"runtime_compatibility_id"`
+field HostLinkRegistryObservation.SessionID SessionID `json:"session_id"`
+field HostLinkRegistryObservation.TenantID TenantID `json:"tenant_id"`
+field HostLinkRegistryObservation.Version WireVersion `json:"version"`
+field HostLinkUnbindRequest.HostGeneration uint64 `json:"host_generation"`
+field HostLinkUnbindRequest.HostID HostID `json:"host_id"`
+field HostLinkUnbindRequest.IdempotencyKey string `json:"idempotency_key"`
+field HostLinkUnbindRequest.LeaseEpoch uint64 `json:"lease_epoch"`
+field HostLinkUnbindRequest.SessionID SessionID `json:"session_id"`
+field HostLinkUnbindRequest.TenantID TenantID `json:"tenant_id"`
+field HostLinkUnbindRequest.Version WireVersion `json:"version"`
+field IDValidationError.Code IDValidationCode
+field InputRequest.Blocks json.RawMessage `json:"blocks"`
+field InputRequest.CommandEnvelope CommandEnvelope
+field InputRequest.SessionID SessionID `json:"session_id"`
+field InterruptRequest.CommandEnvelope CommandEnvelope
+field InterruptRequest.SessionID SessionID `json:"session_id"`
+field JournalEvent.Body json.RawMessage `json:"body"`
+field JournalEvent.EventID EventID `json:"event_id"`
+field JournalEvent.JournalSeq uint64 `json:"journal_seq"`
+field JournalPage.CapturedTip uint64 `json:"journal_tip"`
+field JournalPage.CoveredThrough uint64 `json:"covered_through"`
+field JournalPage.Events []JournalEvent `json:"events"`
+field JournalPage.NextCursor Cursor `json:"next_cursor,omitempty"`
+field JournalPage.PreviousCursor Cursor `json:"previous_cursor,omitempty"`
+field JournalTip.SessionID SessionID `json:"session_id"`
+field JournalTip.TenantID TenantID `json:"tenant_id"`
+field JournalTip.Tip uint64 `json:"journal_tip"`
+field ObjectMetadata.CreatedAt time.Time `json:"created_at,omitzero"`
+field ObjectMetadata.Digest string `json:"digest,omitempty"`
+field ObjectMetadata.MediaType string `json:"media_type,omitempty"`
+field ObjectMetadata.Reference ObjectReference `json:"reference"`
+field ObjectMetadata.SizeBytes uint64 `json:"size_bytes"`
+field ObjectReference.ObjectID string `json:"object_id"`
+field RequestValidationError.Code RequestValidationCode
+field RequestValidationError.Field string
+field RestoreRequest.CommandEnvelope CommandEnvelope
+field RestoreRequest.SessionID SessionID `json:"session_id"`
+field SessionPage.NextCursor Cursor `json:"next_cursor,omitempty"`
+field SessionPage.PreviousCursor Cursor `json:"previous_cursor,omitempty"`
+field SessionPage.Sessions []SessionSummary `json:"sessions"`
+field SessionReset.JournalTip uint64 `json:"journal_tip"`
+field SessionReset.LastContiguous uint64 `json:"last_contiguous"`
+field SessionReset.SessionID SessionID `json:"session_id"`
+field SessionReset.TenantID TenantID `json:"tenant_id"`
+field SessionStatus.AgentID AgentID `json:"agent_id"`
+field SessionStatus.JournalTip uint64 `json:"journal_tip"`
+field SessionStatus.Residency SessionResidency `json:"residency"`
+field SessionStatus.SessionID SessionID `json:"session_id"`
+field SessionStatus.State SessionState `json:"state"`
+field SessionStatus.UpdatedAt time.Time `json:"updated_at,omitzero"`
+field SessionStatus.WaitingGateID GateID `json:"waiting_gate_id,omitempty"`
+field SessionSummary.AgentID AgentID `json:"agent_id"`
+field SessionSummary.CreatedAt time.Time `json:"created_at,omitzero"`
+field SessionSummary.LastActiveAt time.Time `json:"last_active_at"`
+field SessionSummary.SessionID SessionID `json:"session_id"`
+field SessionSummary.State SessionState `json:"state"`
+field SessionSummary.Title string `json:"title,omitempty"`
+field VersionNegotiationRequest.SupportedVersions []WireVersion `json:"supported_versions"`
+field VersionNegotiationResponse.Version WireVersion `json:"version"`
+func CanonicalDeadlineUnixMillis(deadline time.Time) string
+func DeterministicCommandID(domain string, fields ...string) (CommandID, error)
+func NegotiateVersion(request VersionNegotiationRequest) (VersionNegotiationResponse, error)
+func SessionRecordTypeOf(data []byte) (SessionRecordType, error)
+method (*AgentCapabilitySummary) UnmarshalJSON(data []byte) error
+method (*CommandID) UnmarshalJSON(data []byte) error
+method (*CommandIDFramingError) Error() string
+method (*CommandStatus) UnmarshalJSON(data []byte) error
+method (*CreateRequest) UnmarshalJSON(data []byte) error
+method (*DepartmentCapabilitySummary) UnmarshalJSON(data []byte) error
+method (*EnduringPublication) UnmarshalJSON(data []byte) error
+method (*EphemeralPublication) UnmarshalJSON(data []byte) error
+method (*ErrorDetail) UnmarshalJSON(data []byte) error
+method (*ErrorEnvelope) UnmarshalJSON(data []byte) error
+method (*GateControl) UnmarshalJSON(data []byte) error
+method (*GatePage) UnmarshalJSON(data []byte) error
+method (*GateProjection) UnmarshalJSON(data []byte) error
+method (*GatePrompt) UnmarshalJSON(data []byte) error
+method (*GatePromptField) UnmarshalJSON(data []byte) error
+method (*GatePromptOption) UnmarshalJSON(data []byte) error
+method (*GatePromptSchema) UnmarshalJSON(data []byte) error
+method (*GateResponseRequest) UnmarshalJSON(data []byte) error
+method (*HostLinkBindRequest) UnmarshalJSON(data []byte) error
+method (*HostLinkCapacityReport) UnmarshalJSON(data []byte) error
+method (*HostLinkCommandDelivery) UnmarshalJSON(data []byte) error
+method (*HostLinkDrainObservation) UnmarshalJSON(data []byte) error
+method (*HostLinkDrainRequest) UnmarshalJSON(data []byte) error
+method (*HostLinkError) UnmarshalJSON(data []byte) error
+method (*HostLinkRegistryObservation) UnmarshalJSON(data []byte) error
+method (*HostLinkUnbindRequest) UnmarshalJSON(data []byte) error
+method (*IDValidationError) Error() string
+method (*InputRequest) UnmarshalJSON(data []byte) error
+method (*InterruptRequest) UnmarshalJSON(data []byte) error
+method (*JournalEvent) UnmarshalJSON(data []byte) error
+method (*JournalPage) UnmarshalJSON(data []byte) error
+method (*JournalTip) UnmarshalJSON(data []byte) error
+method (*ObjectMetadata) UnmarshalJSON(data []byte) error
+method (*ObjectReference) UnmarshalJSON(data []byte) error
+method (*RequestValidationError) Error() string
+method (*RestoreRequest) UnmarshalJSON(data []byte) error
+method (*SessionPage) UnmarshalJSON(data []byte) error
+method (*SessionReset) UnmarshalJSON(data []byte) error
+method (*SessionStatus) UnmarshalJSON(data []byte) error
+method (*SessionSummary) UnmarshalJSON(data []byte) error
+method (*VersionNegotiationRequest) UnmarshalJSON(data []byte) error
+method (*VersionNegotiationResponse) UnmarshalJSON(data []byte) error
+method (AgentCapabilitySummary) AdditionalFields() map[string]json.RawMessage
+method (AgentCapabilitySummary) MarshalJSON() ([]byte, error)
+method (AgentCapabilitySummary) Validate() error
+method (AgentID) Validate() error
+method (CommandEnvelope) Validate() error
+method (CommandID) Validate() error
+method (CommandStatus) AdditionalFields() map[string]json.RawMessage
+method (CommandStatus) MarshalJSON() ([]byte, error)
+method (CommandStatus) Validate() error
+method (CreateRequest) Validate() error
+method (DepartmentCapabilitySummary) AdditionalFields() map[string]json.RawMessage
+method (DepartmentCapabilitySummary) MarshalJSON() ([]byte, error)
+method (DepartmentCapabilitySummary) Validate() error
+method (EnduringPublication) AdditionalFields() map[string]json.RawMessage
+method (EnduringPublication) MarshalJSON() ([]byte, error)
+method (EnduringPublication) RecordType() SessionRecordType
+method (EnduringPublication) Validate() error
+method (EphemeralPublication) AdditionalFields() map[string]json.RawMessage
+method (EphemeralPublication) MarshalJSON() ([]byte, error)
+method (EphemeralPublication) RecordType() SessionRecordType
+method (EphemeralPublication) Validate() error
+method (ErrorDetail) AdditionalFields() map[string]json.RawMessage
+method (ErrorDetail) MarshalJSON() ([]byte, error)
+method (ErrorDetail) Validate() error
+method (ErrorEnvelope) AdditionalFields() map[string]json.RawMessage
+method (ErrorEnvelope) MarshalJSON() ([]byte, error)
+method (ErrorEnvelope) Validate() error
+method (EventID) Validate() error
+method (GateControl) AdditionalFields() map[string]json.RawMessage
+method (GateControl) MarshalJSON() ([]byte, error)
+method (GateID) Validate() error
+method (GatePage) AdditionalFields() map[string]json.RawMessage
+method (GatePage) MarshalJSON() ([]byte, error)
+method (GatePage) Validate() error
+method (GateProjection) AdditionalFields() map[string]json.RawMessage
+method (GateProjection) MarshalJSON() ([]byte, error)
+method (GateProjection) Validate() error
+method (GatePrompt) AdditionalFields() map[string]json.RawMessage
+method (GatePrompt) MarshalJSON() ([]byte, error)
+method (GatePrompt) Validate() error
+method (GatePromptField) AdditionalFields() map[string]json.RawMessage
+method (GatePromptField) MarshalJSON() ([]byte, error)
+method (GatePromptField) Validate() error
+method (GatePromptOption) AdditionalFields() map[string]json.RawMessage
+method (GatePromptOption) MarshalJSON() ([]byte, error)
+method (GatePromptSchema) AdditionalFields() map[string]json.RawMessage
+method (GatePromptSchema) MarshalJSON() ([]byte, error)
+method (GatePromptSchema) Validate() error
+method (GateResponseRequest) Validate() error
+method (HostID) Validate() error
+method (HostLinkBindRequest) MarshalJSON() ([]byte, error)
+method (HostLinkBindRequest) Validate() error
+method (HostLinkCapacityReport) MarshalJSON() ([]byte, error)
+method (HostLinkCapacityReport) Validate() error
+method (HostLinkCommandDelivery) MarshalJSON() ([]byte, error)
+method (HostLinkCommandDelivery) Validate() error
+method (HostLinkDrainObservation) MarshalJSON() ([]byte, error)
+method (HostLinkDrainObservation) Validate() error
+method (HostLinkDrainRequest) MarshalJSON() ([]byte, error)
+method (HostLinkDrainRequest) Validate() error
+method (HostLinkError) MarshalJSON() ([]byte, error)
+method (HostLinkError) Validate() error
+method (HostLinkRegistryObservation) MarshalJSON() ([]byte, error)
+method (HostLinkRegistryObservation) Validate() error
+method (HostLinkUnbindRequest) MarshalJSON() ([]byte, error)
+method (HostLinkUnbindRequest) Validate() error
+method (InputRequest) Validate() error
+method (InternalEndpoint) Validate() error
+method (InterruptRequest) Validate() error
+method (JournalEvent) AdditionalFields() map[string]json.RawMessage
+method (JournalEvent) MarshalJSON() ([]byte, error)
+method (JournalEvent) Validate() error
+method (JournalPage) AdditionalFields() map[string]json.RawMessage
+method (JournalPage) MarshalJSON() ([]byte, error)
+method (JournalPage) Validate() error
+method (JournalTip) AdditionalFields() map[string]json.RawMessage
+method (JournalTip) MarshalJSON() ([]byte, error)
+method (JournalTip) RecordType() SessionRecordType
+method (JournalTip) Validate() error
+method (ObjectMetadata) Validate() error
+method (ObjectReference) Validate() error
+method (RestoreRequest) Validate() error
+method (SessionID) Validate() error
+method (SessionPage) AdditionalFields() map[string]json.RawMessage
+method (SessionPage) MarshalJSON() ([]byte, error)
+method (SessionPage) Validate() error
+method (SessionReset) AdditionalFields() map[string]json.RawMessage
+method (SessionReset) MarshalJSON() ([]byte, error)
+method (SessionReset) RecordType() SessionRecordType
+method (SessionReset) Validate() error
+method (SessionStatus) AdditionalFields() map[string]json.RawMessage
+method (SessionStatus) MarshalJSON() ([]byte, error)
+method (SessionStatus) Validate() error
+method (SessionSummary) AdditionalFields() map[string]json.RawMessage
+method (SessionSummary) MarshalJSON() ([]byte, error)
+method (SessionSummary) Validate() error
+method (TenantID) Validate() error
+method (VersionNegotiationRequest) MarshalJSON() ([]byte, error)
+method (VersionNegotiationRequest) Validate() error
+method (VersionNegotiationResponse) AdditionalFields() map[string]json.RawMessage
+method (VersionNegotiationResponse) MarshalJSON() ([]byte, error)
+method (VersionNegotiationResponse) Validate() error
+type AgentCapabilitySummary struct
+type AgentID string
+type CommandEnvelope struct
+type CommandID string
+type CommandIDFramingCode string
+type CommandIDFramingError struct
+type CommandState string
+type CommandStatus struct
+type CreateRequest struct
+type Cursor string
+type DepartmentCapabilitySummary struct
+type EnduringPublication struct
+type EphemeralPublication struct
+type ErrorCode string
+type ErrorDetail struct
+type ErrorEnvelope struct
+type EventID string
+type GateAnswerability string
+type GateControl struct
+type GateFieldKind string
+type GateID string
+type GatePage struct
+type GateProjection struct
+type GatePrompt struct
+type GatePromptField struct
+type GatePromptOption struct
+type GatePromptSchema struct
+type GateResponseRequest struct
+type HostID string
+type HostIsolationClass string
+type HostLinkBindRequest struct
+type HostLinkCapacityReport struct
+type HostLinkCommandDelivery struct
+type HostLinkDrainObservation struct
+type HostLinkDrainRequest struct
+type HostLinkDrainState string
+type HostLinkError struct
+type HostLinkErrorCode string
+type HostLinkRegistryObservation struct
+type HostLinkUnbindRequest struct
+type HostPlacement string
+type IDValidationCode string
+type IDValidationError struct
+type InputRequest struct
+type InternalEndpoint string
+type InterruptRequest struct
+type JournalEvent struct
+type JournalPage struct
+type JournalTip struct
+type ObjectMetadata struct
+type ObjectReference struct
+type RequestValidationCode string
+type RequestValidationError struct
+type RestoreRequest struct
+type SessionID string
+type SessionPage struct
+type SessionRecordType string
+type SessionReset struct
+type SessionResidency string
+type SessionState string
+type SessionStatus struct
+type SessionSummary struct
+type TenantID string
+type VersionNegotiationRequest struct
+type VersionNegotiationResponse struct
+type WireVersion uint8
