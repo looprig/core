@@ -6,6 +6,87 @@ import (
 	"errors"
 )
 
+// SessionRecordType is the stable wire name of a record carried on the
+// tenant-scoped session channel `session:{tid}:{sid}` (specification 8.1). One
+// subscriber receives every publication, repair hint, and repair control on that
+// single channel, so each record names its own kind in the `type` envelope
+// member rather than leaving a consumer to infer a kind from which optional
+// members happen to be present.
+//
+// The two spec-named values are used verbatim: specification 17.3 and 21 name
+// the `session.reset` repair control and the repeatable `journal_tip` hint. A
+// dotted name follows the control/RPC namespace the specification already uses
+// for `session.input`, `session.interrupt`, and `gate.respond`; the two
+// publication records are data rather than controls and use the snake_case
+// record names their schemas and fixtures are already published under.
+//
+// The discriminator belongs to the envelope. It never enters the opaque relayed
+// event body, so the canonical byte-identical relay contract is unchanged.
+type SessionRecordType string
+
+const (
+	SessionRecordTypeEnduringPublication  SessionRecordType = "enduring_publication"
+	SessionRecordTypeEphemeralPublication SessionRecordType = "ephemeral_publication"
+	SessionRecordTypeJournalTip           SessionRecordType = "journal_tip"
+	SessionRecordTypeSessionReset         SessionRecordType = "session.reset"
+)
+
+// sessionRecordTypeMember is the envelope member every session-channel record
+// carries. It is deliberately a member of the envelope and not of the relayed
+// public body.
+const sessionRecordTypeMember = "type"
+
+func (t SessionRecordType) valid() bool {
+	switch t {
+	case SessionRecordTypeEnduringPublication, SessionRecordTypeEphemeralPublication,
+		SessionRecordTypeJournalTip, SessionRecordTypeSessionReset:
+		return true
+	}
+	return false
+}
+
+// SessionRecordTypeOf reports the record kind of one encoded session-channel
+// record so a subscriber can dispatch before decoding. It fails closed on a
+// missing, non-string, or unrecognized discriminator rather than guessing.
+func SessionRecordTypeOf(data []byte) (SessionRecordType, error) {
+	fields, err := decodeJSONObject(data)
+	if err != nil {
+		return "", invalidJSONObject(err)
+	}
+	return decodeSessionRecordType(fields)
+}
+
+// decodeSessionRecordType reads and validates the discriminator that every
+// session-channel record must carry.
+func decodeSessionRecordType(fields map[string]json.RawMessage) (SessionRecordType, error) {
+	raw, ok := fields[sessionRecordTypeMember]
+	if !ok || isJSONNull(raw) {
+		return "", invalidRequest(RequestValidationCodeMissingField, sessionRecordTypeMember)
+	}
+	value, err := decodeStrictJSONString(raw)
+	if err != nil {
+		return "", invalidRequest(RequestValidationCodeInvalidField, sessionRecordTypeMember)
+	}
+	recordType := SessionRecordType(value)
+	if !recordType.valid() {
+		return "", invalidRequest(RequestValidationCodeInvalidField, sessionRecordTypeMember)
+	}
+	return recordType, nil
+}
+
+// requireSessionRecordType rejects a record whose discriminator is absent or
+// names a different kind than the record being decoded.
+func requireSessionRecordType(fields map[string]json.RawMessage, want SessionRecordType) error {
+	got, err := decodeSessionRecordType(fields)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return invalidRequest(RequestValidationCodeInvalidField, sessionRecordTypeMember)
+	}
+	return nil
+}
+
 // EnduringPublication is a committed public journal event carried over a live
 // link. Body is already canonical public JSON and remains opaque to Core. The
 // durable identity and sequence let a consumer join this fast path with a
@@ -19,6 +100,12 @@ type EnduringPublication struct {
 	Body           json.RawMessage `json:"body"`
 
 	extensions responseExtensions
+}
+
+// RecordType reports the stable session-channel record name this type is
+// published under.
+func (p EnduringPublication) RecordType() SessionRecordType {
+	return SessionRecordTypeEnduringPublication
 }
 
 // AdditionalFields returns copies of forward-compatible public publication
@@ -61,6 +148,9 @@ func (p EnduringPublication) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	fields := map[string]json.RawMessage{}
+	if err := putJSONField(fields, sessionRecordTypeMember, SessionRecordTypeEnduringPublication); err != nil {
+		return nil, err
+	}
 	for name, value := range map[string]any{
 		"tenant_id":       p.TenantID,
 		"session_id":      p.SessionID,
@@ -82,6 +172,9 @@ func (p *EnduringPublication) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
 		return invalidJSONObject(err)
+	}
+	if err := requireSessionRecordType(fields, SessionRecordTypeEnduringPublication); err != nil {
+		return err
 	}
 	tenantID, err := decodeTenantID(fields, "tenant_id")
 	if err != nil {
@@ -117,7 +210,7 @@ func (p *EnduringPublication) UnmarshalJSON(data []byte) error {
 		JournalSeq:     journalSeq,
 		CoveredThrough: coveredThrough,
 		Body:           body,
-		extensions:     captureExtensions(fields, "tenant_id", "session_id", "event_id", "journal_seq", "covered_through", "body"),
+		extensions:     captureExtensions(fields, sessionRecordTypeMember, "tenant_id", "session_id", "event_id", "journal_seq", "covered_through", "body"),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -135,6 +228,12 @@ type EphemeralPublication struct {
 	Body      json.RawMessage `json:"body"`
 
 	extensions responseExtensions
+}
+
+// RecordType reports the stable session-channel record name this type is
+// published under.
+func (p EphemeralPublication) RecordType() SessionRecordType {
+	return SessionRecordTypeEphemeralPublication
 }
 
 // AdditionalFields returns copies of forward-compatible public publication
@@ -179,6 +278,9 @@ func (p EphemeralPublication) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	fields := map[string]json.RawMessage{}
+	if err := putJSONField(fields, sessionRecordTypeMember, SessionRecordTypeEphemeralPublication); err != nil {
+		return nil, err
+	}
 	for name, value := range map[string]any{
 		"tenant_id":  p.TenantID,
 		"session_id": p.SessionID,
@@ -197,6 +299,9 @@ func (p *EphemeralPublication) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
 		return invalidJSONObject(err)
+	}
+	if err := requireSessionRecordType(fields, SessionRecordTypeEphemeralPublication); err != nil {
+		return err
 	}
 	for _, name := range []string{"event_id", "journal_seq", "covered_through"} {
 		if _, ok := fields[name]; ok {
@@ -219,7 +324,7 @@ func (p *EphemeralPublication) UnmarshalJSON(data []byte) error {
 		TenantID:   tenantID,
 		SessionID:  sessionID,
 		Body:       body,
-		extensions: captureExtensions(fields, "tenant_id", "session_id", "body"),
+		extensions: captureExtensions(fields, sessionRecordTypeMember, "tenant_id", "session_id", "body"),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -238,6 +343,10 @@ type JournalTip struct {
 
 	extensions responseExtensions
 }
+
+// RecordType reports the stable session-channel record name this type is
+// published under.
+func (h JournalTip) RecordType() SessionRecordType { return SessionRecordTypeJournalTip }
 
 // AdditionalFields returns copies of forward-compatible repair-hint members.
 func (h JournalTip) AdditionalFields() map[string]json.RawMessage {
@@ -261,6 +370,9 @@ func (h JournalTip) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	fields := map[string]json.RawMessage{}
+	if err := putJSONField(fields, sessionRecordTypeMember, SessionRecordTypeJournalTip); err != nil {
+		return nil, err
+	}
 	for name, value := range map[string]any{
 		"tenant_id":   h.TenantID,
 		"session_id":  h.SessionID,
@@ -278,6 +390,9 @@ func (h *JournalTip) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return invalidJSONObject(err)
 	}
+	if err := requireSessionRecordType(fields, SessionRecordTypeJournalTip); err != nil {
+		return err
+	}
 	tenantID, err := decodeTenantID(fields, "tenant_id")
 	if err != nil {
 		return err
@@ -294,7 +409,7 @@ func (h *JournalTip) UnmarshalJSON(data []byte) error {
 		TenantID:   tenantID,
 		SessionID:  sessionID,
 		Tip:        tip,
-		extensions: captureExtensions(fields, "tenant_id", "session_id", "journal_tip"),
+		extensions: captureExtensions(fields, sessionRecordTypeMember, "tenant_id", "session_id", "journal_tip"),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -315,6 +430,10 @@ type SessionReset struct {
 
 	extensions responseExtensions
 }
+
+// RecordType reports the stable session-channel record name this type is
+// published under.
+func (r SessionReset) RecordType() SessionRecordType { return SessionRecordTypeSessionReset }
 
 // AdditionalFields returns copies of forward-compatible reset-control members.
 func (r SessionReset) AdditionalFields() map[string]json.RawMessage {
@@ -341,6 +460,9 @@ func (r SessionReset) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	fields := map[string]json.RawMessage{}
+	if err := putJSONField(fields, sessionRecordTypeMember, SessionRecordTypeSessionReset); err != nil {
+		return nil, err
+	}
 	for name, value := range map[string]any{
 		"tenant_id":       r.TenantID,
 		"session_id":      r.SessionID,
@@ -358,6 +480,9 @@ func (r *SessionReset) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
 		return invalidJSONObject(err)
+	}
+	if err := requireSessionRecordType(fields, SessionRecordTypeSessionReset); err != nil {
+		return err
 	}
 	tenantID, err := decodeTenantID(fields, "tenant_id")
 	if err != nil {
@@ -380,7 +505,7 @@ func (r *SessionReset) UnmarshalJSON(data []byte) error {
 		SessionID:      sessionID,
 		LastContiguous: lastContiguous,
 		JournalTip:     tip,
-		extensions:     captureExtensions(fields, "tenant_id", "session_id", "last_contiguous", "journal_tip"),
+		extensions:     captureExtensions(fields, sessionRecordTypeMember, "tenant_id", "session_id", "last_contiguous", "journal_tip"),
 	}
 	if err := decoded.Validate(); err != nil {
 		return err

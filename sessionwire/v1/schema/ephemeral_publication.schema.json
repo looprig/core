@@ -5,8 +5,9 @@
   "description": "Forward-compatible best-effort public delta. It intentionally has no event_id, journal_seq, or covered_through durable promise; Core rejects those members on decode.",
   "type": "object",
   "additionalProperties": true,
-  "required": ["tenant_id", "session_id", "body"],
+  "required": ["type", "tenant_id", "session_id", "body"],
   "properties": {
+    "type": {"const": "ephemeral_publication", "type": "string", "description": "Stable session-channel record name. Every record published on session:{tid}:{sid} names its own kind here."},
     "tenant_id": {"$ref": "#/$defs/id"},
     "session_id": {"$ref": "#/$defs/id"},
     "body": {"not": {"type": "null"}}

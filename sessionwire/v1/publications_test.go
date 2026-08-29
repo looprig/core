@@ -22,7 +22,7 @@ func TestSessionResetJSONGolden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal(SessionReset): %v", err)
 	}
-	const want = `{"journal_tip":5,"last_contiguous":3,"session_id":"session-1","tenant_id":"tenant-1"}`
+	const want = `{"journal_tip":5,"last_contiguous":3,"session_id":"session-1","tenant_id":"tenant-1","type":"session.reset"}`
 	if !bytes.Equal(data, []byte(want)) {
 		t.Errorf("SessionReset JSON = %s, want %s", data, want)
 	}
@@ -48,7 +48,7 @@ func TestJournalTipJSONGolden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal(JournalTip): %v", err)
 	}
-	const want = `{"journal_tip":5,"session_id":"session-1","tenant_id":"tenant-1"}`
+	const want = `{"journal_tip":5,"session_id":"session-1","tenant_id":"tenant-1","type":"journal_tip"}`
 	if !bytes.Equal(data, []byte(want)) {
 		t.Errorf("JournalTip JSON = %s, want %s", data, want)
 	}
@@ -145,7 +145,7 @@ func TestEnduringPublicationRejectsNonTransportCanonicalBody(t *testing.T) {
 		t.Fatal("EnduringPublication.Validate() accepted a body encoding/json would rewrite")
 	}
 
-	const wire = `{"tenant_id":"tenant-1","session_id":"session-1","event_id":"event-5","journal_seq":5,"covered_through":5,"body":{"html":"<tag>&"}}`
+	const wire = `{"type":"enduring_publication","tenant_id":"tenant-1","session_id":"session-1","event_id":"event-5","journal_seq":5,"covered_through":5,"body":{"html":"<tag>&"}}`
 	var decoded sessionwire.EnduringPublication
 	if err := json.Unmarshal([]byte(wire), &decoded); err == nil {
 		t.Fatal("EnduringPublication.UnmarshalJSON() accepted a body encoding/json would rewrite")
@@ -155,7 +155,7 @@ func TestEnduringPublicationRejectsNonTransportCanonicalBody(t *testing.T) {
 func TestEphemeralPublicationRejectsDurableSequencePromise(t *testing.T) {
 	t.Parallel()
 
-	const body = `{"tenant_id":"tenant-1","session_id":"session-1","body":{"kind":"token_delta"},"journal_seq":5}`
+	const body = `{"type":"ephemeral_publication","tenant_id":"tenant-1","session_id":"session-1","body":{"kind":"token_delta"},"journal_seq":5}`
 	var publication sessionwire.EphemeralPublication
 	if err := json.Unmarshal([]byte(body), &publication); err == nil {
 		t.Fatal("EphemeralPublication accepted a durable journal sequence")
@@ -172,7 +172,7 @@ func TestPublicationAndRepairRecordsPreserveSafeResponseExtensions(t *testing.T)
 	}{
 		{
 			name: "enduring publication",
-			body: `{"tenant_id":"tenant-1","session_id":"session-1","event_id":"event-1","journal_seq":1,"covered_through":1,"body":{"type":"public"},"future":{"safe":true}}`,
+			body: `{"type":"enduring_publication","tenant_id":"tenant-1","session_id":"session-1","event_id":"event-1","journal_seq":1,"covered_through":1,"body":{"type":"public"},"future":{"safe":true}}`,
 			roundTrip: func(data []byte) ([]byte, error) {
 				var value sessionwire.EnduringPublication
 				if err := json.Unmarshal(data, &value); err != nil {
@@ -183,7 +183,7 @@ func TestPublicationAndRepairRecordsPreserveSafeResponseExtensions(t *testing.T)
 		},
 		{
 			name: "journal tip",
-			body: `{"tenant_id":"tenant-1","session_id":"session-1","journal_tip":1,"future":{"safe":true}}`,
+			body: `{"type":"journal_tip","tenant_id":"tenant-1","session_id":"session-1","journal_tip":1,"future":{"safe":true}}`,
 			roundTrip: func(data []byte) ([]byte, error) {
 				var value sessionwire.JournalTip
 				if err := json.Unmarshal(data, &value); err != nil {
@@ -194,7 +194,7 @@ func TestPublicationAndRepairRecordsPreserveSafeResponseExtensions(t *testing.T)
 		},
 		{
 			name: "session reset",
-			body: `{"tenant_id":"tenant-1","session_id":"session-1","last_contiguous":1,"journal_tip":2,"future":{"safe":true}}`,
+			body: `{"type":"session.reset","tenant_id":"tenant-1","session_id":"session-1","last_contiguous":1,"journal_tip":2,"future":{"safe":true}}`,
 			roundTrip: func(data []byte) ([]byte, error) {
 				var value sessionwire.SessionReset
 				if err := json.Unmarshal(data, &value); err != nil {
@@ -235,7 +235,7 @@ func TestSessionResetRejectsTipBeforeLastContiguous(t *testing.T) {
 func TestEnduringPublicationRejectsMalformedPublicBody(t *testing.T) {
 	t.Parallel()
 
-	body := append([]byte(`{"tenant_id":"tenant-1","session_id":"session-1","event_id":"event-1","journal_seq":1,"covered_through":1,"body":{"text":"`), 0xff)
+	body := append([]byte(`{"type":"enduring_publication","tenant_id":"tenant-1","session_id":"session-1","event_id":"event-1","journal_seq":1,"covered_through":1,"body":{"text":"`), 0xff)
 	body = append(body, []byte(`"}}`)...)
 	var publication sessionwire.EnduringPublication
 	err := json.Unmarshal(body, &publication)
@@ -245,5 +245,192 @@ func TestEnduringPublicationRejectsMalformedPublicBody(t *testing.T) {
 	var validation *sessionwire.RequestValidationError
 	if !errors.As(err, &validation) {
 		t.Fatalf("error = %T (%v), want RequestValidationError", err, err)
+	}
+}
+
+// TestSessionChannelRecordsCarryStableTypeDiscriminator pins the wire
+// discriminator. Specification 8.1 puts every live session record on one
+// channel, `session:{tid}:{sid}`, and 17.3/21 name the `session.reset` repair
+// control and the repeatable `journal_tip` hint. Without an explicit member a
+// subscriber could only guess a record's kind from which optional members
+// happen to be present.
+func TestSessionChannelRecordsCarryStableTypeDiscriminator(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		record any
+		want   sessionwire.SessionRecordType
+	}{
+		{
+			name: "enduring publication",
+			record: sessionwire.EnduringPublication{
+				TenantID: "tenant-1", SessionID: "session-1", EventID: "event-1",
+				JournalSeq: 1, CoveredThrough: 1, Body: json.RawMessage(`{"type":"public"}`),
+			},
+			want: sessionwire.SessionRecordTypeEnduringPublication,
+		},
+		{
+			name: "ephemeral publication",
+			record: sessionwire.EphemeralPublication{
+				TenantID: "tenant-1", SessionID: "session-1", Body: json.RawMessage(`{"type":"token_delta"}`),
+			},
+			want: sessionwire.SessionRecordTypeEphemeralPublication,
+		},
+		{
+			name:   "journal tip",
+			record: sessionwire.JournalTip{TenantID: "tenant-1", SessionID: "session-1", Tip: 5},
+			want:   sessionwire.SessionRecordTypeJournalTip,
+		},
+		{
+			name:   "session reset",
+			record: sessionwire.SessionReset{TenantID: "tenant-1", SessionID: "session-1", LastContiguous: 3, JournalTip: 5},
+			want:   sessionwire.SessionRecordTypeSessionReset,
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			data, err := json.Marshal(tt.record)
+			if err != nil {
+				t.Fatalf("Marshal: %v", err)
+			}
+			got, err := sessionwire.SessionRecordTypeOf(data)
+			if err != nil {
+				t.Fatalf("SessionRecordTypeOf: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("SessionRecordTypeOf = %q, want %q", got, tt.want)
+			}
+			if declared, ok := tt.record.(interface {
+				RecordType() sessionwire.SessionRecordType
+			}); !ok {
+				t.Fatalf("%T does not declare its session record type", tt.record)
+			} else if declared.RecordType() != tt.want {
+				t.Errorf("RecordType() = %q, want %q", declared.RecordType(), tt.want)
+			}
+		})
+	}
+	if got, want := len(tests), 4; got != want {
+		t.Errorf("covered %d session-channel record kinds, want %d", got, want)
+	}
+}
+
+// TestSessionRecordTypeNamesFollowTheSpecification keeps the two spec-named
+// values byte-stable; renaming either one silently breaks Factory and WUI.
+func TestSessionRecordTypeNamesFollowTheSpecification(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		got  sessionwire.SessionRecordType
+		want string
+	}{
+		{sessionwire.SessionRecordTypeSessionReset, "session.reset"},
+		{sessionwire.SessionRecordTypeJournalTip, "journal_tip"},
+		{sessionwire.SessionRecordTypeEnduringPublication, "enduring_publication"},
+		{sessionwire.SessionRecordTypeEphemeralPublication, "ephemeral_publication"},
+	} {
+		if string(tt.got) != tt.want {
+			t.Errorf("session record type = %q, want %q", tt.got, tt.want)
+		}
+	}
+}
+
+// TestSessionChannelRecordsRejectAbsentOrMismatchedType proves the
+// discriminator is load-bearing rather than decorative: a record whose type is
+// missing, or whose type names a different kind, must not decode.
+func TestSessionChannelRecordsRejectAbsentOrMismatchedType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		absent  string
+		wrong   string
+		decode  func([]byte) error
+		wantAll bool
+	}{
+		{
+			name:   "enduring publication",
+			absent: `{"tenant_id":"tenant-1","session_id":"session-1","event_id":"event-1","journal_seq":1,"covered_through":1,"body":{"type":"public"}}`,
+			wrong:  `{"type":"ephemeral_publication","tenant_id":"tenant-1","session_id":"session-1","event_id":"event-1","journal_seq":1,"covered_through":1,"body":{"type":"public"}}`,
+			decode: func(data []byte) error {
+				var value sessionwire.EnduringPublication
+				return json.Unmarshal(data, &value)
+			},
+		},
+		{
+			name:   "ephemeral publication",
+			absent: `{"tenant_id":"tenant-1","session_id":"session-1","body":{"type":"token_delta"}}`,
+			wrong:  `{"type":"enduring_publication","tenant_id":"tenant-1","session_id":"session-1","body":{"type":"token_delta"}}`,
+			decode: func(data []byte) error {
+				var value sessionwire.EphemeralPublication
+				return json.Unmarshal(data, &value)
+			},
+		},
+		{
+			name:   "journal tip",
+			absent: `{"tenant_id":"tenant-1","session_id":"session-1","journal_tip":5}`,
+			wrong:  `{"type":"session.reset","tenant_id":"tenant-1","session_id":"session-1","journal_tip":5}`,
+			decode: func(data []byte) error {
+				var value sessionwire.JournalTip
+				return json.Unmarshal(data, &value)
+			},
+		},
+		{
+			name:   "session reset",
+			absent: `{"tenant_id":"tenant-1","session_id":"session-1","last_contiguous":3,"journal_tip":5}`,
+			wrong:  `{"type":"journal_tip","tenant_id":"tenant-1","session_id":"session-1","last_contiguous":3,"journal_tip":5}`,
+			decode: func(data []byte) error {
+				var value sessionwire.SessionReset
+				return json.Unmarshal(data, &value)
+			},
+		},
+	}
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, probe := range []struct {
+				label string
+				body  string
+				code  sessionwire.RequestValidationCode
+			}{
+				{"absent", tt.absent, sessionwire.RequestValidationCodeMissingField},
+				{"mismatched", tt.wrong, sessionwire.RequestValidationCodeInvalidField},
+			} {
+				err := tt.decode([]byte(probe.body))
+				if err == nil {
+					t.Fatalf("%s discriminator accepted: %s", probe.label, probe.body)
+				}
+				var validation *sessionwire.RequestValidationError
+				if !errors.As(err, &validation) {
+					t.Fatalf("%s: error = %T (%v), want RequestValidationError", probe.label, err, err)
+				}
+				if validation.Code != probe.code || validation.Field != "type" {
+					t.Errorf("%s: code/field = %q/%q, want %q/%q", probe.label, validation.Code, validation.Field, probe.code, "type")
+				}
+			}
+		})
+	}
+}
+
+// TestSessionRecordTypeOfRejectsUnknownAndMalformedRecords keeps a subscriber
+// fail-closed rather than guessing a kind for an unrecognized record.
+func TestSessionRecordTypeOfRejectsUnknownAndMalformedRecords(t *testing.T) {
+	t.Parallel()
+
+	for _, body := range []string{
+		`{"tenant_id":"tenant-1"}`,
+		`{"type":"not_a_session_record","tenant_id":"tenant-1"}`,
+		`{"type":5}`,
+		`[]`,
+		`{`,
+	} {
+		if got, err := sessionwire.SessionRecordTypeOf([]byte(body)); err == nil {
+			t.Errorf("SessionRecordTypeOf(%s) = %q, want error", body, got)
+		}
 	}
 }

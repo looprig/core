@@ -5,8 +5,9 @@
   "description": "Forward-compatible repeatable durable-repair hint, not a client acknowledgement or cursor.",
   "type": "object",
   "additionalProperties": true,
-  "required": ["tenant_id", "session_id", "journal_tip"],
+  "required": ["type", "tenant_id", "session_id", "journal_tip"],
   "properties": {
+    "type": {"const": "journal_tip", "type": "string", "description": "Stable session-channel record name. Every record published on session:{tid}:{sid} names its own kind here."},
     "tenant_id": {"$ref": "#/$defs/id"},
     "session_id": {"$ref": "#/$defs/id"},
     "journal_tip": {"type": "integer", "minimum": 0}

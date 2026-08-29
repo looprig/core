@@ -5,8 +5,9 @@
   "description": "Forward-compatible repair control after a durable live-tail gap. Core enforces last_contiguous <= journal_tip.",
   "type": "object",
   "additionalProperties": true,
-  "required": ["tenant_id", "session_id", "last_contiguous", "journal_tip"],
+  "required": ["type", "tenant_id", "session_id", "last_contiguous", "journal_tip"],
   "properties": {
+    "type": {"const": "session.reset", "type": "string", "description": "Stable session-channel record name. Every record published on session:{tid}:{sid} names its own kind here."},
     "tenant_id": {"$ref": "#/$defs/id"},
     "session_id": {"$ref": "#/$defs/id"},
     "last_contiguous": {"type": "integer", "minimum": 0},

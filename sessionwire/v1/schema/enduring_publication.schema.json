@@ -5,8 +5,9 @@
   "description": "Forward-compatible live relay of one committed public journal event. Core enforces journal_seq == covered_through and the raw body fixed-point JSON representation.",
   "type": "object",
   "additionalProperties": true,
-  "required": ["tenant_id", "session_id", "event_id", "journal_seq", "covered_through", "body"],
+  "required": ["type", "tenant_id", "session_id", "event_id", "journal_seq", "covered_through", "body"],
   "properties": {
+    "type": {"const": "enduring_publication", "type": "string", "description": "Stable session-channel record name. Every record published on session:{tid}:{sid} names its own kind here."},
     "tenant_id": {"$ref": "#/$defs/id"},
     "session_id": {"$ref": "#/$defs/id"},
     "event_id": {"$ref": "#/$defs/id"},
