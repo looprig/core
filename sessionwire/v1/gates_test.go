@@ -71,28 +71,44 @@ func TestGatePagePreservesUnknownResponseFields(t *testing.T) {
 func TestGateProjectionRequiresOpenIdentityAndAnswerability(t *testing.T) {
 	t.Parallel()
 
-	for _, body := range []string{
-		`{"gate_id":"gate-1","kind":"harness.ask_user","opened_journal_seq":42,"deadline":"2026-08-29T20:00:00Z","answerability":"resident","prompt":{}}`,
-		`{"gate_id":"gate-1","kind":"harness.ask_user","opened_event_id":"event-42","opened_journal_seq":42,"deadline":"2026-08-29T20:00:00Z","answerability":"unknown","prompt":{}}`,
+	for _, tt := range []struct {
+		body      string
+		wantCode  sessionwire.RequestValidationCode
+		wantField string
+	}{
+		{body: `{"gate_id":"gate-1","kind":"harness.ask_user","opened_journal_seq":42,"deadline":"2026-08-29T20:00:00Z","answerability":"resident","prompt":{}}`, wantCode: sessionwire.RequestValidationCodeMissingField, wantField: "opened_event_id"},
+		{body: `{"gate_id":"gate-1","kind":"harness.ask_user","opened_event_id":"event-42","opened_journal_seq":42,"deadline":"2026-08-29T20:00:00Z","answerability":"unknown","prompt":{}}`, wantCode: sessionwire.RequestValidationCodeInvalidField, wantField: "answerability"},
 	} {
 		var projection sessionwire.GateProjection
-		if err := json.Unmarshal([]byte(body), &projection); err == nil {
-			t.Fatalf("GateProjection decoded invalid public state: %s", body)
-		}
+		assertValidationError(t, json.Unmarshal([]byte(tt.body), &projection), tt.wantCode, tt.wantField)
 	}
 }
 
 func TestGatePromptRejectsUnrenderableFieldsAndControls(t *testing.T) {
 	t.Parallel()
 
-	for _, prompt := range []sessionwire.GatePrompt{
-		{Schema: sessionwire.GatePromptSchema{Fields: []sessionwire.GatePromptField{{Name: "choice", Kind: "future_unrenderable"}}}},
-		{Controls: []sessionwire.GateControl{{Action: "", Label: "Continue"}}},
-		{Origin: "https://example.test/authorize?state=do-not-persist"},
+	for _, tt := range []struct {
+		prompt    sessionwire.GatePrompt
+		wantCode  sessionwire.RequestValidationCode
+		wantField string
+	}{
+		{
+			prompt:    sessionwire.GatePrompt{Schema: sessionwire.GatePromptSchema{Fields: []sessionwire.GatePromptField{{Name: "choice", Kind: "future_unrenderable"}}}},
+			wantCode:  sessionwire.RequestValidationCodeInvalidField,
+			wantField: "prompt.schema.fields.kind",
+		},
+		{
+			prompt:    sessionwire.GatePrompt{Controls: []sessionwire.GateControl{{Action: "", Label: "Continue"}}},
+			wantCode:  sessionwire.RequestValidationCodeInvalidField,
+			wantField: "prompt.controls",
+		},
+		{
+			prompt:    sessionwire.GatePrompt{Origin: "https://example.test/authorize?state=do-not-persist"},
+			wantCode:  sessionwire.RequestValidationCodeInvalidField,
+			wantField: "prompt.origin",
+		},
 	} {
-		if err := prompt.Validate(); err == nil {
-			t.Fatalf("GatePrompt.Validate() accepted an unrenderable public prompt: %#v", prompt)
-		}
+		assertValidationError(t, tt.prompt.Validate(), tt.wantCode, tt.wantField)
 	}
 }
 

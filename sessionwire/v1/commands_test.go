@@ -12,45 +12,57 @@ func TestStateChangingRequestsRejectMissingCommandID(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name   string
-		body   string
-		decode func([]byte) error
+		name      string
+		body      string
+		wantCode  sessionwire.RequestValidationCode
+		wantField string
+		decode    func([]byte) error
 	}{
 		{
-			name: "create",
-			body: `{"version":1,"session_id":"session-1","agent_id":"agent-1"}`,
+			name:      "create",
+			wantCode:  sessionwire.RequestValidationCodeMissingField,
+			wantField: "command_id",
+			body:      `{"version":1,"session_id":"session-1","agent_id":"agent-1"}`,
 			decode: func(data []byte) error {
 				var request sessionwire.CreateRequest
 				return json.Unmarshal(data, &request)
 			},
 		},
 		{
-			name: "input",
-			body: `{"version":1,"session_id":"session-1","blocks":[{"type":"text","text":"hello"}]}`,
+			name:      "input",
+			wantCode:  sessionwire.RequestValidationCodeMissingField,
+			wantField: "command_id",
+			body:      `{"version":1,"session_id":"session-1","blocks":[{"type":"text","text":"hello"}]}`,
 			decode: func(data []byte) error {
 				var request sessionwire.InputRequest
 				return json.Unmarshal(data, &request)
 			},
 		},
 		{
-			name: "interrupt",
-			body: `{"version":1,"session_id":"session-1"}`,
+			name:      "interrupt",
+			wantCode:  sessionwire.RequestValidationCodeMissingField,
+			wantField: "command_id",
+			body:      `{"version":1,"session_id":"session-1"}`,
 			decode: func(data []byte) error {
 				var request sessionwire.InterruptRequest
 				return json.Unmarshal(data, &request)
 			},
 		},
 		{
-			name: "restore compatibility",
-			body: `{"version":1,"session_id":"session-1"}`,
+			name:      "restore compatibility",
+			wantCode:  sessionwire.RequestValidationCodeMissingField,
+			wantField: "command_id",
+			body:      `{"version":1,"session_id":"session-1"}`,
 			decode: func(data []byte) error {
 				var request sessionwire.RestoreRequest
 				return json.Unmarshal(data, &request)
 			},
 		},
 		{
-			name: "gate response",
-			body: `{"version":1,"session_id":"session-1","gate_id":"gate-1","action":"answer","values":{},"expected_open_event_id":"event-1"}`,
+			name:      "gate response",
+			wantCode:  sessionwire.RequestValidationCodeMissingField,
+			wantField: "command_id",
+			body:      `{"version":1,"session_id":"session-1","gate_id":"gate-1","action":"answer","values":{},"expected_open_event_id":"event-1"}`,
 			decode: func(data []byte) error {
 				var request sessionwire.GateResponseRequest
 				return json.Unmarshal(data, &request)
@@ -61,9 +73,7 @@ func TestStateChangingRequestsRejectMissingCommandID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if err := tt.decode([]byte(tt.body)); err == nil {
-				t.Fatal("request without command_id decoded successfully")
-			}
+			assertValidationError(t, tt.decode([]byte(tt.body)), tt.wantCode, tt.wantField)
 		})
 	}
 }
@@ -71,14 +81,16 @@ func TestStateChangingRequestsRejectMissingCommandID(t *testing.T) {
 func TestCreateRequestRequiresClientGeneratedSessionID(t *testing.T) {
 	t.Parallel()
 
-	for _, body := range []string{
-		`{"version":1,"command_id":"cmd-1","agent_id":"agent-1"}`,
-		`{"version":1,"command_id":"cmd-1","session_id":"","agent_id":"agent-1"}`,
+	for _, tt := range []struct {
+		body      string
+		wantCode  sessionwire.RequestValidationCode
+		wantField string
+	}{
+		{body: `{"version":1,"command_id":"cmd-1","agent_id":"agent-1"}`, wantCode: sessionwire.RequestValidationCodeMissingField, wantField: "session_id"},
+		{body: `{"version":1,"command_id":"cmd-1","session_id":"","agent_id":"agent-1"}`, wantCode: sessionwire.RequestValidationCodeInvalidField, wantField: "session_id"},
 	} {
 		var request sessionwire.CreateRequest
-		if err := json.Unmarshal([]byte(body), &request); err == nil {
-			t.Fatalf("CreateRequest decoded without a client session id: %s", body)
-		}
+		assertValidationError(t, json.Unmarshal([]byte(tt.body), &request), tt.wantCode, tt.wantField)
 	}
 
 	request := sessionwire.CreateRequest{
@@ -124,14 +136,16 @@ func TestStateChangingRequestJSONRoundTrip(t *testing.T) {
 func TestGateResponseRequiresExactlyOneOpenVersion(t *testing.T) {
 	t.Parallel()
 
-	for _, body := range []string{
-		`{"version":1,"command_id":"cmd-1","session_id":"session-1","gate_id":"gate-1","action":"answer","values":{}}`,
-		`{"version":1,"command_id":"cmd-1","session_id":"session-1","gate_id":"gate-1","action":"answer","values":{},"expected_open_event_id":"event-1","expected_open_journal_seq":4}`,
+	for _, tt := range []struct {
+		body      string
+		wantCode  sessionwire.RequestValidationCode
+		wantField string
+	}{
+		{body: `{"version":1,"command_id":"cmd-1","session_id":"session-1","gate_id":"gate-1","action":"answer","values":{}}`, wantCode: sessionwire.RequestValidationCodeInvalidField, wantField: "expected_open_version"},
+		{body: `{"version":1,"command_id":"cmd-1","session_id":"session-1","gate_id":"gate-1","action":"answer","values":{},"expected_open_event_id":"event-1","expected_open_journal_seq":4}`, wantCode: sessionwire.RequestValidationCodeInvalidField, wantField: "expected_open_version"},
 	} {
 		var request sessionwire.GateResponseRequest
-		if err := json.Unmarshal([]byte(body), &request); err == nil {
-			t.Fatalf("GateResponseRequest decoded with ambiguous/missing open version: %s", body)
-		}
+		assertValidationError(t, json.Unmarshal([]byte(tt.body), &request), tt.wantCode, tt.wantField)
 	}
 }
 

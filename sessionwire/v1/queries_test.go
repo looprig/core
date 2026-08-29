@@ -19,9 +19,7 @@ func TestSessionPageRejectsNonRecentOrder(t *testing.T) {
 		{SessionID: "session-older", AgentID: "agent-1", State: sessionwire.SessionStateIdle, LastActiveAt: newer.Add(-time.Minute)},
 		{SessionID: "session-newer", AgentID: "agent-1", State: sessionwire.SessionStateIdle, LastActiveAt: newer},
 	}}
-	if err := page.Validate(); err == nil {
-		t.Fatal("SessionPage.Validate() accepted an older session before a newer session")
-	}
+	assertValidationError(t, page.Validate(), sessionwire.RequestValidationCodeInvalidField, "sessions")
 }
 
 func TestSessionPagePreservesUnknownResponseFields(t *testing.T) {
@@ -96,9 +94,7 @@ func TestJournalPageRejectsCoverageBehindVisibleEvent(t *testing.T) {
 			Body:       json.RawMessage(`{"type":"public"}`),
 		}},
 	}
-	if err := page.Validate(); err == nil {
-		t.Fatal("JournalPage.Validate() accepted a visible event past covered_through")
-	}
+	assertValidationError(t, page.Validate(), sessionwire.RequestValidationCodeInvalidField, "events")
 }
 
 func TestPublicJournalAndLivePublicationUseTransportStableCanonicalBodies(t *testing.T) {
@@ -134,9 +130,7 @@ func TestPublicJournalAndLivePublicationUseTransportStableCanonicalBodies(t *tes
 		json.RawMessage("{\"line\":\"" + string(rune(0x2028)) + string(rune(0x2029)) + "\"}"),
 	} {
 		event := sessionwire.JournalEvent{EventID: "event-5", JournalSeq: 5, Body: body}
-		if err := event.Validate(); err == nil {
-			t.Fatalf("JournalEvent.Validate() accepted a body encoding/json would rewrite: %s", body)
-		}
+		assertValidationError(t, event.Validate(), sessionwire.RequestValidationCodeInvalidField, "body")
 		publication := sessionwire.EnduringPublication{
 			TenantID:       "tenant-1",
 			SessionID:      "session-1",
@@ -145,9 +139,7 @@ func TestPublicJournalAndLivePublicationUseTransportStableCanonicalBodies(t *tes
 			CoveredThrough: 5,
 			Body:           body,
 		}
-		if err := publication.Validate(); err == nil {
-			t.Fatalf("EnduringPublication.Validate() accepted a body encoding/json would rewrite: %s", body)
-		}
+		assertValidationError(t, publication.Validate(), sessionwire.RequestValidationCodeInvalidField, "body")
 	}
 }
 
