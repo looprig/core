@@ -15,6 +15,13 @@ type AgentCapabilitySummary struct {
 	AgentID                AgentID  `json:"agent_id"`
 	RuntimeCompatibilityID string   `json:"runtime_compatibility_id"`
 	Capabilities           []string `json:"capabilities,omitempty"`
+
+	extensions responseExtensions
+}
+
+// AdditionalFields returns copies of forward-compatible capability members.
+func (s AgentCapabilitySummary) AdditionalFields() map[string]json.RawMessage {
+	return s.extensions.copy()
 }
 
 // Validate reports whether the capability summary identifies a launchable agent.
@@ -28,10 +35,68 @@ func (s AgentCapabilitySummary) Validate() error {
 	return nil
 }
 
+func (s AgentCapabilitySummary) MarshalJSON() ([]byte, error) {
+	if err := s.Validate(); err != nil {
+		return nil, err
+	}
+	fields := map[string]json.RawMessage{}
+	if err := putJSONField(fields, "agent_id", s.AgentID); err != nil {
+		return nil, err
+	}
+	if err := putJSONField(fields, "runtime_compatibility_id", s.RuntimeCompatibilityID); err != nil {
+		return nil, err
+	}
+	if len(s.Capabilities) != 0 {
+		if err := putJSONField(fields, "capabilities", s.Capabilities); err != nil {
+			return nil, err
+		}
+	}
+	return marshalResponseFields(fields, s.extensions)
+}
+
+func (s *AgentCapabilitySummary) UnmarshalJSON(data []byte) error {
+	fields, err := decodeJSONObject(data)
+	if err != nil {
+		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+	}
+	agentID, err := decodeAgentID(fields, "agent_id")
+	if err != nil {
+		return err
+	}
+	runtimeCompatibilityID, err := decodeRequiredString(fields, "runtime_compatibility_id")
+	if err != nil {
+		return err
+	}
+	var capabilities []string
+	if raw, ok := fields["capabilities"]; ok {
+		if isJSONNull(raw) || json.Unmarshal(raw, &capabilities) != nil || capabilities == nil {
+			return invalidRequest(RequestValidationCodeInvalidField, "capabilities")
+		}
+	}
+	decoded := AgentCapabilitySummary{
+		AgentID:                agentID,
+		RuntimeCompatibilityID: runtimeCompatibilityID,
+		Capabilities:           capabilities,
+		extensions:             captureExtensions(fields, "agent_id", "runtime_compatibility_id", "capabilities"),
+	}
+	if err := decoded.Validate(); err != nil {
+		return err
+	}
+	*s = decoded
+	return nil
+}
+
 // DepartmentCapabilitySummary is the transport-neutral capability discovery
 // response for a Host Department or a Factory projection of one.
 type DepartmentCapabilitySummary struct {
 	Agents []AgentCapabilitySummary `json:"agents"`
+
+	extensions responseExtensions
+}
+
+// AdditionalFields returns copies of forward-compatible department members.
+func (s DepartmentCapabilitySummary) AdditionalFields() map[string]json.RawMessage {
+	return s.extensions.copy()
 }
 
 // Validate reports whether every advertised agent is structurally valid.
@@ -41,6 +106,41 @@ func (s DepartmentCapabilitySummary) Validate() error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (s DepartmentCapabilitySummary) MarshalJSON() ([]byte, error) {
+	if err := s.Validate(); err != nil {
+		return nil, err
+	}
+	fields := map[string]json.RawMessage{}
+	if err := putJSONField(fields, "agents", nonNilSlice(s.Agents)); err != nil {
+		return nil, err
+	}
+	return marshalResponseFields(fields, s.extensions)
+}
+
+func (s *DepartmentCapabilitySummary) UnmarshalJSON(data []byte) error {
+	fields, err := decodeJSONObject(data)
+	if err != nil {
+		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+	}
+	rawAgents, err := decodeRequiredRawField(fields, "agents")
+	if err != nil {
+		return err
+	}
+	var agents []AgentCapabilitySummary
+	if err := json.Unmarshal(rawAgents, &agents); err != nil || agents == nil {
+		return invalidRequest(RequestValidationCodeInvalidField, "agents")
+	}
+	decoded := DepartmentCapabilitySummary{
+		Agents:     agents,
+		extensions: captureExtensions(fields, "agents"),
+	}
+	if err := decoded.Validate(); err != nil {
+		return err
+	}
+	*s = decoded
 	return nil
 }
 
@@ -350,7 +450,7 @@ func (p SessionPage) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	fields := map[string]json.RawMessage{}
-	if err := putJSONField(fields, "sessions", p.Sessions); err != nil {
+	if err := putJSONField(fields, "sessions", nonNilSlice(p.Sessions)); err != nil {
 		return nil, err
 	}
 	if p.NextCursor != "" {
@@ -407,6 +507,13 @@ type JournalEvent struct {
 	EventID    EventID         `json:"event_id"`
 	JournalSeq uint64          `json:"journal_seq"`
 	Body       json.RawMessage `json:"body"`
+
+	extensions responseExtensions
+}
+
+// AdditionalFields returns copies of forward-compatible public event members.
+func (e JournalEvent) AdditionalFields() map[string]json.RawMessage {
+	return e.extensions.copy()
 }
 
 // Validate reports whether the event has a public identity, a durable sequence,
@@ -421,6 +528,56 @@ func (e JournalEvent) Validate() error {
 	if len(e.Body) == 0 || isJSONNull(e.Body) || !json.Valid(e.Body) {
 		return invalidRequest(RequestValidationCodeInvalidField, "body")
 	}
+	return nil
+}
+
+func (e JournalEvent) MarshalJSON() ([]byte, error) {
+	if err := e.Validate(); err != nil {
+		return nil, err
+	}
+	fields := map[string]json.RawMessage{}
+	if err := putJSONField(fields, "event_id", e.EventID); err != nil {
+		return nil, err
+	}
+	if err := putJSONField(fields, "journal_seq", e.JournalSeq); err != nil {
+		return nil, err
+	}
+	if err := putJSONField(fields, "body", e.Body); err != nil {
+		return nil, err
+	}
+	return marshalResponseFields(fields, e.extensions)
+}
+
+func (e *JournalEvent) UnmarshalJSON(data []byte) error {
+	fields, err := decodeJSONObject(data)
+	if err != nil {
+		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+	}
+	eventID, err := decodeOptionalEventID(fields, "event_id")
+	if err != nil || eventID == "" {
+		if err != nil {
+			return err
+		}
+		return invalidRequest(RequestValidationCodeMissingField, "event_id")
+	}
+	journalSeq, err := decodeRequiredUint64(fields, "journal_seq")
+	if err != nil {
+		return err
+	}
+	body, err := decodeRequiredRawField(fields, "body")
+	if err != nil {
+		return err
+	}
+	decoded := JournalEvent{
+		EventID:    eventID,
+		JournalSeq: journalSeq,
+		Body:       body,
+		extensions: captureExtensions(fields, "event_id", "journal_seq", "body"),
+	}
+	if err := decoded.Validate(); err != nil {
+		return err
+	}
+	*e = decoded
 	return nil
 }
 
@@ -467,7 +624,7 @@ func (p JournalPage) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	fields := map[string]json.RawMessage{}
-	if err := putJSONField(fields, "events", p.Events); err != nil {
+	if err := putJSONField(fields, "events", nonNilSlice(p.Events)); err != nil {
 		return nil, err
 	}
 	if err := putJSONField(fields, "journal_tip", p.CapturedTip); err != nil {
@@ -535,6 +692,10 @@ func (p *JournalPage) UnmarshalJSON(data []byte) error {
 
 // ObjectReference is an opaque logical object identity. It is not a bucket key,
 // signed URL, credential, or a byte payload.
+//
+// Unlike forward-compatible public projection records, object records are a
+// redaction boundary: unknown JSON members are intentionally not retained or
+// re-emitted, so a provider URL, credential, or object bytes cannot be proxied.
 type ObjectReference struct {
 	ObjectID string `json:"object_id"`
 }

@@ -60,6 +60,13 @@ type ErrorDetail struct {
 	Code      ErrorCode `json:"code"`
 	Message   string    `json:"message,omitempty"`
 	Retryable bool      `json:"retryable"`
+
+	extensions responseExtensions
+}
+
+// AdditionalFields returns copies of forward-compatible error-detail members.
+func (e ErrorDetail) AdditionalFields() map[string]json.RawMessage {
+	return e.extensions.copy()
 }
 
 // Validate reports whether the public error has the stable code required for a
@@ -68,6 +75,59 @@ func (e ErrorDetail) Validate() error {
 	if e.Code == "" {
 		return invalidRequest(RequestValidationCodeMissingField, "error.code")
 	}
+	return nil
+}
+
+func (e ErrorDetail) MarshalJSON() ([]byte, error) {
+	if err := e.Validate(); err != nil {
+		return nil, err
+	}
+	fields := map[string]json.RawMessage{}
+	if err := putJSONField(fields, "code", e.Code); err != nil {
+		return nil, err
+	}
+	if e.Message != "" {
+		if err := putJSONField(fields, "message", e.Message); err != nil {
+			return nil, err
+		}
+	}
+	if err := putJSONField(fields, "retryable", e.Retryable); err != nil {
+		return nil, err
+	}
+	return marshalResponseFields(fields, e.extensions)
+}
+
+func (e *ErrorDetail) UnmarshalJSON(data []byte) error {
+	fields, err := decodeJSONObject(data)
+	if err != nil {
+		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+	}
+	code, err := decodeRequiredString(fields, "code")
+	if err != nil {
+		return err
+	}
+	var message string
+	if raw, ok := fields["message"]; ok {
+		if isJSONNull(raw) || json.Unmarshal(raw, &message) != nil {
+			return invalidRequest(RequestValidationCodeInvalidField, "message")
+		}
+	}
+	var retryable bool
+	if raw, ok := fields["retryable"]; ok {
+		if isJSONNull(raw) || json.Unmarshal(raw, &retryable) != nil {
+			return invalidRequest(RequestValidationCodeInvalidField, "retryable")
+		}
+	}
+	decoded := ErrorDetail{
+		Code:       ErrorCode(code),
+		Message:    message,
+		Retryable:  retryable,
+		extensions: captureExtensions(fields, "code", "message", "retryable"),
+	}
+	if err := decoded.Validate(); err != nil {
+		return err
+	}
+	*e = decoded
 	return nil
 }
 
@@ -125,15 +185,15 @@ func (e *ErrorEnvelope) UnmarshalJSON(data []byte) error {
 // deliberately unexported: callers can inspect preserved data through
 // AdditionalFields but cannot overwrite a known contract member.
 type responseExtensions struct {
-	fields map[string]json.RawMessage
+	fields *map[string]json.RawMessage
 }
 
 func (e responseExtensions) copy() map[string]json.RawMessage {
-	if len(e.fields) == 0 {
+	if e.fields == nil || len(*e.fields) == 0 {
 		return nil
 	}
-	result := make(map[string]json.RawMessage, len(e.fields))
-	for name, value := range e.fields {
+	result := make(map[string]json.RawMessage, len(*e.fields))
+	for name, value := range *e.fields {
 		result[name] = cloneJSON(value)
 	}
 	return result
@@ -154,15 +214,20 @@ func captureExtensions(fields map[string]json.RawMessage, known ...string) respo
 		}
 		extensions[name] = cloneJSON(value)
 	}
-	return responseExtensions{fields: extensions}
+	if len(extensions) == 0 {
+		return responseExtensions{}
+	}
+	return responseExtensions{fields: &extensions}
 }
 
 func marshalResponseFields(fields map[string]json.RawMessage, extensions responseExtensions) ([]byte, error) {
-	for name, value := range extensions.fields {
-		if _, exists := fields[name]; exists {
-			return nil, fmt.Errorf("sessionwire/v1: response extension collides with %q", name)
+	if extensions.fields != nil {
+		for name, value := range *extensions.fields {
+			if _, exists := fields[name]; exists {
+				return nil, fmt.Errorf("sessionwire/v1: response extension collides with %q", name)
+			}
+			fields[name] = cloneJSON(value)
 		}
-		fields[name] = cloneJSON(value)
 	}
 	return json.Marshal(fields)
 }
@@ -229,4 +294,11 @@ func isJSONNull(data []byte) bool {
 
 func cloneJSON(data json.RawMessage) json.RawMessage {
 	return append(json.RawMessage(nil), data...)
+}
+
+func nonNilSlice[T any](values []T) []T {
+	if values == nil {
+		return []T{}
+	}
+	return values
 }

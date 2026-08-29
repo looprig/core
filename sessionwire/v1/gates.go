@@ -52,6 +52,13 @@ func (k GateFieldKind) valid() bool {
 type GatePromptOption struct {
 	Value string `json:"value"`
 	Label string `json:"label"`
+
+	extensions responseExtensions
+}
+
+// AdditionalFields returns copies of forward-compatible public option members.
+func (o GatePromptOption) AdditionalFields() map[string]json.RawMessage {
+	return o.extensions.copy()
 }
 
 // GatePromptField is one public structured field. Default is JSON data intended
@@ -63,6 +70,13 @@ type GatePromptField struct {
 	Required bool               `json:"required"`
 	Options  []GatePromptOption `json:"options,omitempty"`
 	Default  json.RawMessage    `json:"default,omitempty"`
+
+	extensions responseExtensions
+}
+
+// AdditionalFields returns copies of forward-compatible public field members.
+func (f GatePromptField) AdditionalFields() map[string]json.RawMessage {
+	return f.extensions.copy()
 }
 
 // Validate reports whether a field has the public renderer vocabulary needed to
@@ -84,6 +98,13 @@ func (f GatePromptField) Validate() error {
 // private prepared payload or response data.
 type GatePromptSchema struct {
 	Fields []GatePromptField `json:"fields,omitempty"`
+
+	extensions responseExtensions
+}
+
+// AdditionalFields returns copies of forward-compatible schema members.
+func (s GatePromptSchema) AdditionalFields() map[string]json.RawMessage {
+	return s.extensions.copy()
 }
 
 // Validate reports whether every public field is renderable.
@@ -100,6 +121,13 @@ func (s GatePromptSchema) Validate() error {
 type GateControl struct {
 	Action string `json:"action"`
 	Label  string `json:"label"`
+
+	extensions responseExtensions
+}
+
+// AdditionalFields returns copies of forward-compatible control members.
+func (c GateControl) AdditionalFields() map[string]json.RawMessage {
+	return c.extensions.copy()
 }
 
 // GatePrompt contains only presentation-safe data that a Factory can render.
@@ -111,6 +139,274 @@ type GatePrompt struct {
 	Origin   string           `json:"origin,omitempty"`
 	Schema   GatePromptSchema `json:"schema,omitempty"`
 	Controls []GateControl    `json:"controls,omitempty"`
+
+	extensions responseExtensions
+}
+
+// AdditionalFields returns copies of forward-compatible prompt members.
+func (p GatePrompt) AdditionalFields() map[string]json.RawMessage {
+	return p.extensions.copy()
+}
+
+func (o GatePromptOption) MarshalJSON() ([]byte, error) {
+	fields := map[string]json.RawMessage{}
+	if err := putJSONField(fields, "value", o.Value); err != nil {
+		return nil, err
+	}
+	if err := putJSONField(fields, "label", o.Label); err != nil {
+		return nil, err
+	}
+	return marshalResponseFields(fields, o.extensions)
+}
+
+func (o *GatePromptOption) UnmarshalJSON(data []byte) error {
+	fields, err := decodeJSONObject(data)
+	if err != nil {
+		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+	}
+	value, err := decodeOptionalResponseString(fields, "value")
+	if err != nil {
+		return err
+	}
+	label, err := decodeOptionalResponseString(fields, "label")
+	if err != nil {
+		return err
+	}
+	*o = GatePromptOption{
+		Value:      value,
+		Label:      label,
+		extensions: captureExtensions(fields, "value", "label"),
+	}
+	return nil
+}
+
+func (f GatePromptField) MarshalJSON() ([]byte, error) {
+	fields := map[string]json.RawMessage{}
+	for name, value := range map[string]any{
+		"name":     f.Name,
+		"label":    f.Label,
+		"kind":     f.Kind,
+		"required": f.Required,
+	} {
+		if err := putJSONField(fields, name, value); err != nil {
+			return nil, err
+		}
+	}
+	if len(f.Options) != 0 {
+		if err := putJSONField(fields, "options", f.Options); err != nil {
+			return nil, err
+		}
+	}
+	if len(f.Default) != 0 {
+		if err := putJSONField(fields, "default", f.Default); err != nil {
+			return nil, err
+		}
+	}
+	return marshalResponseFields(fields, f.extensions)
+}
+
+func (f *GatePromptField) UnmarshalJSON(data []byte) error {
+	fields, err := decodeJSONObject(data)
+	if err != nil {
+		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+	}
+	name, err := decodeOptionalResponseString(fields, "name")
+	if err != nil {
+		return err
+	}
+	label, err := decodeOptionalResponseString(fields, "label")
+	if err != nil {
+		return err
+	}
+	kind, err := decodeOptionalResponseString(fields, "kind")
+	if err != nil {
+		return err
+	}
+	required, err := decodeOptionalResponseBool(fields, "required")
+	if err != nil {
+		return err
+	}
+	var options []GatePromptOption
+	if raw, ok := fields["options"]; ok {
+		if isJSONNull(raw) || json.Unmarshal(raw, &options) != nil || options == nil {
+			return invalidRequest(RequestValidationCodeInvalidField, "prompt.schema.fields.options")
+		}
+	}
+	var defaultValue json.RawMessage
+	if raw, ok := fields["default"]; ok {
+		if isJSONNull(raw) || !json.Valid(raw) {
+			return invalidRequest(RequestValidationCodeInvalidField, "prompt.schema.fields.default")
+		}
+		defaultValue = cloneJSON(raw)
+	}
+	*f = GatePromptField{
+		Name:       name,
+		Label:      label,
+		Kind:       GateFieldKind(kind),
+		Required:   required,
+		Options:    options,
+		Default:    defaultValue,
+		extensions: captureExtensions(fields, "name", "label", "kind", "required", "options", "default"),
+	}
+	return nil
+}
+
+func (s GatePromptSchema) MarshalJSON() ([]byte, error) {
+	fields := map[string]json.RawMessage{}
+	if len(s.Fields) != 0 {
+		if err := putJSONField(fields, "fields", s.Fields); err != nil {
+			return nil, err
+		}
+	}
+	return marshalResponseFields(fields, s.extensions)
+}
+
+func (s *GatePromptSchema) UnmarshalJSON(data []byte) error {
+	fields, err := decodeJSONObject(data)
+	if err != nil {
+		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+	}
+	var promptFields []GatePromptField
+	if raw, ok := fields["fields"]; ok {
+		if isJSONNull(raw) || json.Unmarshal(raw, &promptFields) != nil || promptFields == nil {
+			return invalidRequest(RequestValidationCodeInvalidField, "prompt.schema.fields")
+		}
+	}
+	*s = GatePromptSchema{
+		Fields:     promptFields,
+		extensions: captureExtensions(fields, "fields"),
+	}
+	return nil
+}
+
+func (c GateControl) MarshalJSON() ([]byte, error) {
+	fields := map[string]json.RawMessage{}
+	if err := putJSONField(fields, "action", c.Action); err != nil {
+		return nil, err
+	}
+	if err := putJSONField(fields, "label", c.Label); err != nil {
+		return nil, err
+	}
+	return marshalResponseFields(fields, c.extensions)
+}
+
+func (c *GateControl) UnmarshalJSON(data []byte) error {
+	fields, err := decodeJSONObject(data)
+	if err != nil {
+		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+	}
+	action, err := decodeOptionalResponseString(fields, "action")
+	if err != nil {
+		return err
+	}
+	label, err := decodeOptionalResponseString(fields, "label")
+	if err != nil {
+		return err
+	}
+	*c = GateControl{
+		Action:     action,
+		Label:      label,
+		extensions: captureExtensions(fields, "action", "label"),
+	}
+	return nil
+}
+
+func (p GatePrompt) MarshalJSON() ([]byte, error) {
+	fields := map[string]json.RawMessage{}
+	if p.Title != "" {
+		if err := putJSONField(fields, "title", p.Title); err != nil {
+			return nil, err
+		}
+	}
+	if p.Body != "" {
+		if err := putJSONField(fields, "body", p.Body); err != nil {
+			return nil, err
+		}
+	}
+	if p.Origin != "" {
+		if err := putJSONField(fields, "origin", p.Origin); err != nil {
+			return nil, err
+		}
+	}
+	if err := putJSONField(fields, "schema", p.Schema); err != nil {
+		return nil, err
+	}
+	if len(p.Controls) != 0 {
+		if err := putJSONField(fields, "controls", p.Controls); err != nil {
+			return nil, err
+		}
+	}
+	return marshalResponseFields(fields, p.extensions)
+}
+
+func (p *GatePrompt) UnmarshalJSON(data []byte) error {
+	fields, err := decodeJSONObject(data)
+	if err != nil {
+		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+	}
+	title, err := decodeOptionalResponseString(fields, "title")
+	if err != nil {
+		return err
+	}
+	body, err := decodeOptionalResponseString(fields, "body")
+	if err != nil {
+		return err
+	}
+	origin, err := decodeOptionalResponseString(fields, "origin")
+	if err != nil {
+		return err
+	}
+	var schema GatePromptSchema
+	if raw, ok := fields["schema"]; ok {
+		if isJSONNull(raw) || json.Unmarshal(raw, &schema) != nil {
+			return invalidRequest(RequestValidationCodeInvalidField, "prompt.schema")
+		}
+	}
+	var controls []GateControl
+	if raw, ok := fields["controls"]; ok {
+		if isJSONNull(raw) || json.Unmarshal(raw, &controls) != nil || controls == nil {
+			return invalidRequest(RequestValidationCodeInvalidField, "prompt.controls")
+		}
+	}
+	*p = GatePrompt{
+		Title:      title,
+		Body:       body,
+		Origin:     origin,
+		Schema:     schema,
+		Controls:   controls,
+		extensions: captureExtensions(fields, "title", "body", "origin", "schema", "controls"),
+	}
+	return nil
+}
+
+func decodeOptionalResponseString(fields map[string]json.RawMessage, name string) (string, error) {
+	raw, ok := fields[name]
+	if !ok {
+		return "", nil
+	}
+	if isJSONNull(raw) {
+		return "", invalidRequest(RequestValidationCodeInvalidField, name)
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return "", invalidRequest(RequestValidationCodeInvalidField, name)
+	}
+	return value, nil
+}
+
+func decodeOptionalResponseBool(fields map[string]json.RawMessage, name string) (bool, error) {
+	raw, ok := fields[name]
+	if !ok {
+		return false, nil
+	}
+	if isJSONNull(raw) {
+		return false, invalidRequest(RequestValidationCodeInvalidField, name)
+	}
+	var value bool
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return false, invalidRequest(RequestValidationCodeInvalidField, name)
+	}
+	return value, nil
 }
 
 // Validate reports whether the nested public schema and controls are renderable.
@@ -318,7 +614,7 @@ func (p GatePage) MarshalJSON() ([]byte, error) {
 	for name, value := range map[string]any{
 		"journal_tip":     p.JournalTip,
 		"open_gate_count": p.OpenGateCount,
-		"gates":           p.Gates,
+		"gates":           nonNilSlice(p.Gates),
 	} {
 		if err := putJSONField(fields, name, value); err != nil {
 			return nil, err

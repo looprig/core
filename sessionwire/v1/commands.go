@@ -224,6 +224,8 @@ type GateResponseRequest struct {
 	Values                 map[string]json.RawMessage `json:"values"`
 	ExpectedOpenEventID    EventID                    `json:"expected_open_event_id,omitempty"`
 	ExpectedOpenJournalSeq uint64                     `json:"expected_open_journal_seq,omitempty"`
+
+	expectedOpenJournalSeqExplicitlyZero bool
 }
 
 // Validate reports whether the gate response has exactly one optimistic-open
@@ -245,15 +247,18 @@ func (r GateResponseRequest) Validate() error {
 	if r.Values == nil {
 		return invalidRequest(RequestValidationCodeMissingField, "values")
 	}
+	if r.expectedOpenJournalSeqExplicitlyZero {
+		return invalidRequest(RequestValidationCodeInvalidField, "expected_open_journal_seq")
+	}
 	hasEventID := r.ExpectedOpenEventID != ""
 	hasSequence := r.ExpectedOpenJournalSeq != 0
-	if hasEventID == hasSequence {
-		return invalidRequest(RequestValidationCodeInvalidField, "expected_open_version")
-	}
 	if hasEventID {
 		if err := r.ExpectedOpenEventID.Validate(); err != nil {
 			return invalidRequest(RequestValidationCodeInvalidField, "expected_open_event_id")
 		}
+	}
+	if hasEventID == hasSequence {
+		return invalidRequest(RequestValidationCodeInvalidField, "expected_open_version")
 	}
 	for name, value := range r.Values {
 		if name == "" || !json.Valid(value) {
@@ -297,14 +302,16 @@ func (r *GateResponseRequest) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
+	_, sequencePresent := fields["expected_open_journal_seq"]
 	decoded := GateResponseRequest{
-		CommandEnvelope:        envelope,
-		SessionID:              sessionID,
-		GateID:                 gateID,
-		Action:                 action,
-		Values:                 values,
-		ExpectedOpenEventID:    eventID,
-		ExpectedOpenJournalSeq: sequence,
+		CommandEnvelope:                      envelope,
+		SessionID:                            sessionID,
+		GateID:                               gateID,
+		Action:                               action,
+		Values:                               values,
+		ExpectedOpenEventID:                  eventID,
+		ExpectedOpenJournalSeq:               sequence,
+		expectedOpenJournalSeqExplicitlyZero: sequencePresent && sequence == 0,
 	}
 	if err := decoded.Validate(); err != nil {
 		return err
@@ -442,7 +449,7 @@ func decodeRequestFields(data []byte, known ...string) (map[string]json.RawMessa
 	}
 	for name := range fields {
 		if _, ok := allowed[name]; !ok {
-			return nil, invalidRequest(RequestValidationCodeUnknownField, name)
+			return nil, invalidRequest(RequestValidationCodeUnknownField, "")
 		}
 	}
 	return fields, nil
@@ -589,8 +596,8 @@ func decodeRawValues(fields map[string]json.RawMessage) (map[string]json.RawMess
 	if !ok || isJSONNull(raw) {
 		return nil, invalidRequest(RequestValidationCodeMissingField, "values")
 	}
-	var values map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &values); err != nil || values == nil {
+	values, err := decodeJSONObject(raw)
+	if err != nil {
 		return nil, invalidRequest(RequestValidationCodeInvalidField, "values")
 	}
 	for name, value := range values {
