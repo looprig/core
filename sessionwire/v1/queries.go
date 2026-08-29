@@ -529,7 +529,7 @@ func (e JournalEvent) Validate() error {
 	if e.JournalSeq == 0 {
 		return invalidRequest(RequestValidationCodeInvalidField, "journal_seq")
 	}
-	if len(e.Body) == 0 || isJSONNull(e.Body) || validateStrictJSON(e.Body) != nil {
+	if validateTransportCanonicalPublicBody(e.Body) != nil {
 		return invalidRequest(RequestValidationCodeInvalidField, "body")
 	}
 	return nil

@@ -101,6 +101,56 @@ func TestJournalPageRejectsCoverageBehindVisibleEvent(t *testing.T) {
 	}
 }
 
+func TestPublicJournalAndLivePublicationUseTransportStableCanonicalBodies(t *testing.T) {
+	t.Parallel()
+
+	canonical := json.RawMessage(`{"type":"public","html":"\u003ctag\u003e\u0026","line":"\u2028\u2029","number":1e+00}`)
+	journal := sessionwire.JournalPage{
+		CapturedTip:    5,
+		CoveredThrough: 5,
+		Events: []sessionwire.JournalEvent{{
+			EventID:    "event-5",
+			JournalSeq: 5,
+			Body:       canonical,
+		}},
+	}
+	data, err := json.Marshal(journal)
+	if err != nil {
+		t.Fatalf("Marshal(JournalPage): %v", err)
+	}
+	if !bytes.Contains(data, canonical) {
+		t.Fatalf("JournalPage changed canonical event body bytes: %s", data)
+	}
+	var decoded sessionwire.JournalPage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Unmarshal(JournalPage): %v", err)
+	}
+	if got := decoded.Events[0].Body; !bytes.Equal(got, canonical) {
+		t.Errorf("JournalPage body = %s, want byte-identical %s", got, canonical)
+	}
+
+	for _, body := range []json.RawMessage{
+		json.RawMessage(`{"html":"<tag>&"}`),
+		json.RawMessage("{\"line\":\"" + string(rune(0x2028)) + string(rune(0x2029)) + "\"}"),
+	} {
+		event := sessionwire.JournalEvent{EventID: "event-5", JournalSeq: 5, Body: body}
+		if err := event.Validate(); err == nil {
+			t.Fatalf("JournalEvent.Validate() accepted a body encoding/json would rewrite: %s", body)
+		}
+		publication := sessionwire.EnduringPublication{
+			TenantID:       "tenant-1",
+			SessionID:      "session-1",
+			EventID:        "event-5",
+			JournalSeq:     5,
+			CoveredThrough: 5,
+			Body:           body,
+		}
+		if err := publication.Validate(); err == nil {
+			t.Fatalf("EnduringPublication.Validate() accepted a body encoding/json would rewrite: %s", body)
+		}
+	}
+}
+
 func TestCapabilityAndObjectRecordsRemainTransportNeutral(t *testing.T) {
 	t.Parallel()
 
