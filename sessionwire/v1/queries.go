@@ -57,7 +57,7 @@ func (s AgentCapabilitySummary) MarshalJSON() ([]byte, error) {
 func (s *AgentCapabilitySummary) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	agentID, err := decodeAgentID(fields, "agent_id")
 	if err != nil {
@@ -123,7 +123,7 @@ func (s DepartmentCapabilitySummary) MarshalJSON() ([]byte, error) {
 func (s *DepartmentCapabilitySummary) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	rawAgents, err := decodeRequiredRawField(fields, "agents")
 	if err != nil {
@@ -240,7 +240,7 @@ func (s SessionSummary) MarshalJSON() ([]byte, error) {
 func (s *SessionSummary) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	sessionID, err := decodeSessionID(fields, "session_id")
 	if err != nil {
@@ -367,7 +367,7 @@ func (s SessionStatus) MarshalJSON() ([]byte, error) {
 func (s *SessionStatus) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	sessionID, err := decodeSessionID(fields, "session_id")
 	if err != nil {
@@ -473,7 +473,7 @@ func (p SessionPage) MarshalJSON() ([]byte, error) {
 func (p *SessionPage) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	rawSessions, err := decodeRequiredRawField(fields, "sessions")
 	if err != nil {
@@ -555,7 +555,7 @@ func (e JournalEvent) MarshalJSON() ([]byte, error) {
 func (e *JournalEvent) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	eventID, err := decodeOptionalEventID(fields, "event_id")
 	if err != nil || eventID == "" {
@@ -653,7 +653,7 @@ func (p JournalPage) MarshalJSON() ([]byte, error) {
 func (p *JournalPage) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	rawEvents, err := decodeRequiredRawField(fields, "events")
 	if err != nil {

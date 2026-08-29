@@ -987,7 +987,7 @@ func (r VersionNegotiationResponse) MarshalJSON() ([]byte, error) {
 func (r *VersionNegotiationResponse) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	version, err := decodeHostLinkVersion(fields)
 	if err != nil {

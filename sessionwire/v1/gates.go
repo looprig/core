@@ -162,7 +162,7 @@ func (o GatePromptOption) MarshalJSON() ([]byte, error) {
 func (o *GatePromptOption) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	value, err := decodeOptionalResponseString(fields, "value")
 	if err != nil {
@@ -208,7 +208,7 @@ func (f GatePromptField) MarshalJSON() ([]byte, error) {
 func (f *GatePromptField) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	name, err := decodeOptionalResponseString(fields, "name")
 	if err != nil {
@@ -264,7 +264,7 @@ func (s GatePromptSchema) MarshalJSON() ([]byte, error) {
 func (s *GatePromptSchema) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	var promptFields []GatePromptField
 	if raw, ok := fields["fields"]; ok {
@@ -293,7 +293,7 @@ func (c GateControl) MarshalJSON() ([]byte, error) {
 func (c *GateControl) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	action, err := decodeOptionalResponseString(fields, "action")
 	if err != nil {
@@ -342,7 +342,7 @@ func (p GatePrompt) MarshalJSON() ([]byte, error) {
 func (p *GatePrompt) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	title, err := decodeOptionalResponseString(fields, "title")
 	if err != nil {
@@ -512,7 +512,7 @@ func (p GateProjection) MarshalJSON() ([]byte, error) {
 func (p *GateProjection) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	gateID, err := decodeGateID(fields, "gate_id")
 	if err != nil {
@@ -633,7 +633,7 @@ func (p GatePage) MarshalJSON() ([]byte, error) {
 func (p *GatePage) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	journalTip, err := decodeRequiredUint64(fields, "journal_tip")
 	if err != nil {

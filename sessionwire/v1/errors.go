@@ -3,6 +3,7 @@ package v1
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"unicode/utf8"
@@ -101,7 +102,7 @@ func (e ErrorDetail) MarshalJSON() ([]byte, error) {
 func (e *ErrorDetail) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	code, err := decodeRequiredString(fields, "code")
 	if err != nil {
@@ -169,7 +170,7 @@ func (e ErrorEnvelope) MarshalJSON() ([]byte, error) {
 func (e *ErrorEnvelope) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	raw, ok := fields["error"]
 	if !ok || isJSONNull(raw) {
@@ -246,6 +247,52 @@ func putJSONField(fields map[string]json.RawMessage, name string, value any) err
 	return nil
 }
 
+// structuralFieldName echoes a wire member name only when it has the shape of a
+// contract member. RequestValidationError.Field is documented to name fields and
+// never caller-supplied values, and an object member name is otherwise arbitrary
+// caller bytes, so anything outside that conservative shape is reported as an
+// unnamed duplicate rather than reflected into a public error string.
+func structuralFieldName(name string) string {
+	if name == "" || len(name) > 64 {
+		return ""
+	}
+	for index := 0; index < len(name); index++ {
+		char := name[index]
+		switch {
+		case char >= 'a' && char <= 'z', char >= 'A' && char <= 'Z',
+			char >= '0' && char <= '9', char == '_', char == '.':
+		default:
+			return ""
+		}
+	}
+	return name
+}
+
+// invalidJSONObject maps a decodeJSONObject failure onto a stable public
+// validation code. A duplicate object member is a distinct, client-actionable
+// condition that RequestValidationCodeDuplicateField names, so it must reach
+// the caller instead of collapsing into the generic invalid_json code an
+// unparseable document uses.
+func invalidJSONObject(err error) error {
+	var validation *RequestValidationError
+	if errors.As(err, &validation) {
+		return validation
+	}
+	return invalidRequest(RequestValidationCodeInvalidJSON, "")
+}
+
+// invalidNestedJSONObject is invalidJSONObject for an object whose member names
+// are caller-supplied rather than contract members, such as a gate answer map.
+// It keeps the stable code but reports only the enclosing contract member, so no
+// caller-chosen key reaches the public error string.
+func invalidNestedJSONObject(err error, member string) error {
+	var validation *RequestValidationError
+	if errors.As(err, &validation) {
+		return invalidRequest(validation.Code, member)
+	}
+	return invalidRequest(RequestValidationCodeInvalidField, member)
+}
+
 func decodeJSONObject(data []byte) (map[string]json.RawMessage, error) {
 	if err := validateStrictJSON(data); err != nil {
 		return nil, err
@@ -270,7 +317,7 @@ func decodeJSONObject(data []byte) (map[string]json.RawMessage, error) {
 			return nil, fmt.Errorf("expected object member name")
 		}
 		if _, exists := fields[name]; exists {
-			return nil, fmt.Errorf("duplicate object member %q", name)
+			return nil, invalidRequest(RequestValidationCodeDuplicateField, structuralFieldName(name))
 		}
 		var value json.RawMessage
 		if err := decoder.Decode(&value); err != nil {

@@ -197,6 +197,7 @@ func TestGateResponseRequestStrictOptimisticVersionAndValues(t *testing.T) {
 		name      string
 		body      string
 		wantField string
+		wantCode  sessionwire.RequestValidationCode
 	}{
 		{
 			name:      "explicit zero journal sequence",
@@ -214,9 +215,13 @@ func TestGateResponseRequestStrictOptimisticVersionAndValues(t *testing.T) {
 			wantField: "expected_open_version",
 		},
 		{
+			// A duplicate key inside the caller-supplied answer map keeps the
+			// stable duplicate_field code but reports only the enclosing
+			// contract member, so no caller-chosen key is reflected back.
 			name:      "duplicate answer value",
 			body:      `{"version":1,"command_id":"cmd-1","session_id":"session-1","gate_id":"gate-1","action":"submit","values":{"answer":"one","answer":"two"},"expected_open_event_id":"event-1"}`,
 			wantField: "values",
+			wantCode:  sessionwire.RequestValidationCodeDuplicateField,
 		},
 	}
 
@@ -235,6 +240,9 @@ func TestGateResponseRequestStrictOptimisticVersionAndValues(t *testing.T) {
 			}
 			if got := validation.Field; got != tt.wantField {
 				t.Errorf("validation Field = %q, want %q", got, tt.wantField)
+			}
+			if tt.wantCode != "" && validation.Code != tt.wantCode {
+				t.Errorf("validation Code = %q, want %q", validation.Code, tt.wantCode)
 			}
 		})
 	}

@@ -400,7 +400,7 @@ func (s CommandStatus) MarshalJSON() ([]byte, error) {
 func (s *CommandStatus) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	commandID, err := decodeCommandID(fields, "command_id")
 	if err != nil {
@@ -442,7 +442,7 @@ func (s *CommandStatus) UnmarshalJSON(data []byte) error {
 func decodeRequestFields(data []byte, known ...string) (map[string]json.RawMessage, error) {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return nil, invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return nil, invalidJSONObject(err)
 	}
 	allowed := make(map[string]struct{}, len(known))
 	for _, name := range known {
@@ -599,7 +599,7 @@ func decodeRawValues(fields map[string]json.RawMessage) (map[string]json.RawMess
 	}
 	values, err := decodeJSONObject(raw)
 	if err != nil {
-		return nil, invalidRequest(RequestValidationCodeInvalidField, "values")
+		return nil, invalidNestedJSONObject(err, "values")
 	}
 	for name, value := range values {
 		if name == "" || !utf8.ValidString(name) || validateStrictJSON(value) != nil {

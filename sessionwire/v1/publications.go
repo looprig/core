@@ -81,7 +81,7 @@ func (p EnduringPublication) MarshalJSON() ([]byte, error) {
 func (p *EnduringPublication) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	tenantID, err := decodeTenantID(fields, "tenant_id")
 	if err != nil {
@@ -196,7 +196,7 @@ func (p EphemeralPublication) MarshalJSON() ([]byte, error) {
 func (p *EphemeralPublication) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	for _, name := range []string{"event_id", "journal_seq", "covered_through"} {
 		if _, ok := fields[name]; ok {
@@ -276,7 +276,7 @@ func (h JournalTip) MarshalJSON() ([]byte, error) {
 func (h *JournalTip) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	tenantID, err := decodeTenantID(fields, "tenant_id")
 	if err != nil {
@@ -357,7 +357,7 @@ func (r SessionReset) MarshalJSON() ([]byte, error) {
 func (r *SessionReset) UnmarshalJSON(data []byte) error {
 	fields, err := decodeJSONObject(data)
 	if err != nil {
-		return invalidRequest(RequestValidationCodeInvalidJSON, "")
+		return invalidJSONObject(err)
 	}
 	tenantID, err := decodeTenantID(fields, "tenant_id")
 	if err != nil {
