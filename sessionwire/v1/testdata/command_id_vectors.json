@@ -1,0 +1,68 @@
+[
+  {
+    "name": "empty domain",
+    "domain": "",
+    "fields": [],
+    "expected_command_id": "v1:Z7Y11aTcIT_c0WmJYc59fFRO0uHIZQIRQbwwCG_Mo1M"
+  },
+  {
+    "name": "empty fields",
+    "domain": "command.create",
+    "fields": ["", ""],
+    "expected_command_id": "v1:yOgWaV4wzFPHTgMf5RhaZS8v4hLUnG1K6czWDzf7IG8"
+  },
+  {
+    "name": "multibyte UTF-8",
+    "domain": "命令",
+    "fields": ["café", "東京"],
+    "expected_command_id": "v1:-y87tQd-HIzA-yEKUWcEV8PkitG3i1VEvUxq9tHB4_s"
+  },
+  {
+    "name": "Unicode NFC",
+    "domain": "command.unicode",
+    "fields": ["é"],
+    "expected_command_id": "v1:cXgmavKpyHiFndvvv1Ti58AiafO05o9lfmDisovOvdI"
+  },
+  {
+    "name": "Unicode NFD",
+    "domain": "command.unicode",
+    "fields": ["e\u0301"],
+    "expected_command_id": "v1:Gr9F9tia80AdJZ9FCItSmDPtFADjBLrwwX76v_siBis"
+  },
+  {
+    "name": "embedded NUL",
+    "domain": "command.patch",
+    "fields": ["left\u0000right", "\u0000"],
+    "expected_command_id": "v1:TTvBA7g-R0fCycqa88foS7j1ODNOFl0w0xVb7Jqlb3M"
+  },
+  {
+    "name": "negative deadline",
+    "domain": "command.deadline",
+    "fields": ["-1"],
+    "expected_command_id": "v1:8RmZVfNz0GqfmbucRMakFz4H2rxeMhfCpsty70conuc"
+  },
+  {
+    "name": "zero deadline",
+    "domain": "command.deadline",
+    "fields": ["0"],
+    "expected_command_id": "v1:00Lt0VQTO94vf1seSGSygn5-Wqm5qsKfrmtiS3Og8uU"
+  },
+  {
+    "name": "positive deadline",
+    "domain": "command.deadline",
+    "fields": ["1700000000123"],
+    "expected_command_id": "v1:AFHB7XyzTPaxi4kCUey7T7NgkqPOHTWTZEohnyQqUkE"
+  },
+  {
+    "name": "length-prefix collision left",
+    "domain": "command.concat",
+    "fields": ["ab", "c"],
+    "expected_command_id": "v1:HLctAjGqlh8yIdhr5hq0sC7DohJi8WMsriaWwWWpowo"
+  },
+  {
+    "name": "length-prefix collision right",
+    "domain": "command.concat",
+    "fields": ["a", "bc"],
+    "expected_command_id": "v1:2hVj-kEFdd9W6vzJbuGpW6oEhfAUXy7se2owBtj2nb8"
+  }
+]
