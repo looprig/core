@@ -15,6 +15,16 @@ const (
 	HostPlacementDedicated HostPlacement = "dedicated"
 )
 
+// HostIsolationClass describes whether a Host target advertisement may accept
+// sessions from different tenants. Pooled placement alone does not establish
+// this boundary; Factory uses the advertised class when choosing capacity.
+type HostIsolationClass string
+
+const (
+	HostIsolationClassCrossTenantIsolated HostIsolationClass = "cross_tenant_isolated"
+	HostIsolationClassTenantExclusive     HostIsolationClass = "tenant_exclusive"
+)
+
 // InternalEndpoint is a non-secret WebSocket address for an authenticated
 // HostLink. Credentials, signed query parameters, and fragments are prohibited;
 // service authentication is carried by the HostLink adapter rather than this
@@ -288,17 +298,18 @@ func (d *HostLinkCommandDelivery) UnmarshalJSON(data []byte) error {
 // AvailableCapacity may be zero; that is a valid observation a Factory uses to
 // avoid new placement while still maintaining existing HostLinks.
 type HostLinkCapacityReport struct {
-	Version                WireVersion      `json:"version"`
-	HostID                 HostID           `json:"host_id"`
-	HostGeneration         uint64           `json:"host_generation"`
-	AgentID                AgentID          `json:"agent_id"`
-	RuntimeCompatibilityID string           `json:"runtime_compatibility_id"`
-	Placement              HostPlacement    `json:"placement"`
-	InternalEndpoint       InternalEndpoint `json:"internal_endpoint"`
-	Accepting              bool             `json:"accepting"`
-	AvailableCapacity      uint64           `json:"available_capacity"`
-	ObservedAt             time.Time        `json:"observed_at"`
-	ExpiresAt              time.Time        `json:"expires_at"`
+	Version                WireVersion        `json:"version"`
+	HostID                 HostID             `json:"host_id"`
+	HostGeneration         uint64             `json:"host_generation"`
+	AgentID                AgentID            `json:"agent_id"`
+	RuntimeCompatibilityID string             `json:"runtime_compatibility_id"`
+	Placement              HostPlacement      `json:"placement"`
+	InternalEndpoint       InternalEndpoint   `json:"internal_endpoint"`
+	IsolationClass         HostIsolationClass `json:"isolation_class"`
+	Accepting              bool               `json:"accepting"`
+	AvailableCapacity      uint64             `json:"available_capacity"`
+	ObservedAt             time.Time          `json:"observed_at"`
+	ExpiresAt              time.Time          `json:"expires_at"`
 }
 
 // Validate reports whether the report is a fresh, bounded-capacity observation.
@@ -321,6 +332,12 @@ func (r HostLinkCapacityReport) Validate() error {
 	if err := validateHostLinkEndpoint(r.InternalEndpoint); err != nil {
 		return err
 	}
+	if err := validateHostIsolationClass(r.IsolationClass); err != nil {
+		return err
+	}
+	if r.Placement == HostPlacementDedicated && r.AvailableCapacity > 1 {
+		return invalidRequest(RequestValidationCodeInvalidField, "available_capacity")
+	}
 	return validateHostLinkTimes(r.ObservedAt, r.ExpiresAt)
 }
 
@@ -336,6 +353,7 @@ func (r HostLinkCapacityReport) MarshalJSON() ([]byte, error) {
 		"runtime_compatibility_id": r.RuntimeCompatibilityID,
 		"placement":                r.Placement,
 		"internal_endpoint":        r.InternalEndpoint,
+		"isolation_class":          r.IsolationClass,
 		"accepting":                r.Accepting,
 		"available_capacity":       r.AvailableCapacity,
 		"observed_at":              r.ObservedAt,
@@ -344,7 +362,7 @@ func (r HostLinkCapacityReport) MarshalJSON() ([]byte, error) {
 }
 
 func (r *HostLinkCapacityReport) UnmarshalJSON(data []byte) error {
-	fields, err := decodeRequestFields(data, "version", "host_id", "host_generation", "agent_id", "runtime_compatibility_id", "placement", "internal_endpoint", "accepting", "available_capacity", "observed_at", "expires_at")
+	fields, err := decodeRequestFields(data, "version", "host_id", "host_generation", "agent_id", "runtime_compatibility_id", "placement", "internal_endpoint", "isolation_class", "accepting", "available_capacity", "observed_at", "expires_at")
 	if err != nil {
 		return err
 	}
@@ -376,6 +394,10 @@ func (r *HostLinkCapacityReport) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
+	isolationClass, err := decodeHostIsolationClass(fields)
+	if err != nil {
+		return err
+	}
 	accepting, err := decodeRequiredBool(fields, "accepting")
 	if err != nil {
 		return err
@@ -400,6 +422,7 @@ func (r *HostLinkCapacityReport) UnmarshalJSON(data []byte) error {
 		RuntimeCompatibilityID: runtimeCompatibilityID,
 		Placement:              placement,
 		InternalEndpoint:       internalEndpoint,
+		IsolationClass:         isolationClass,
 		Accepting:              accepting,
 		AvailableCapacity:      availableCapacity,
 		ObservedAt:             observedAt,
@@ -1049,6 +1072,15 @@ func validateHostLinkPlacement(placement HostPlacement) error {
 	}
 }
 
+func validateHostIsolationClass(class HostIsolationClass) error {
+	switch class {
+	case HostIsolationClassCrossTenantIsolated, HostIsolationClassTenantExclusive:
+		return nil
+	default:
+		return invalidRequest(RequestValidationCodeInvalidField, "isolation_class")
+	}
+}
+
 func validateHostLinkEndpoint(endpoint InternalEndpoint) error {
 	if err := endpoint.Validate(); err != nil {
 		return invalidRequest(RequestValidationCodeInvalidField, "internal_endpoint")
@@ -1156,6 +1188,18 @@ func decodeHostLinkPlacement(fields map[string]json.RawMessage) (HostPlacement, 
 		return "", err
 	}
 	return placement, nil
+}
+
+func decodeHostIsolationClass(fields map[string]json.RawMessage) (HostIsolationClass, error) {
+	value, err := decodeRequiredString(fields, "isolation_class")
+	if err != nil {
+		return "", err
+	}
+	class := HostIsolationClass(value)
+	if err := validateHostIsolationClass(class); err != nil {
+		return "", err
+	}
+	return class, nil
 }
 
 func decodeHostLinkEndpoint(fields map[string]json.RawMessage) (InternalEndpoint, error) {

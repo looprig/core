@@ -81,12 +81,13 @@ func TestHostLinkMessageGoldens(t *testing.T) {
 				RuntimeCompatibilityID: "runtime-2026-08",
 				Placement:              sessionwire.HostPlacementPooled,
 				InternalEndpoint:       "wss://host-1.internal/hostlink",
+				IsolationClass:         sessionwire.HostIsolationClassCrossTenantIsolated,
 				Accepting:              true,
 				AvailableCapacity:      4,
 				ObservedAt:             observedAt,
 				ExpiresAt:              observedAt.Add(time.Minute),
 			},
-			want: `{"accepting":true,"agent_id":"agent-1","available_capacity":4,"expires_at":"2026-08-29T12:01:00Z","host_generation":7,"host_id":"host-1","internal_endpoint":"wss://host-1.internal/hostlink","observed_at":"2026-08-29T12:00:00Z","placement":"pooled","runtime_compatibility_id":"runtime-2026-08","version":1}`,
+			want: `{"accepting":true,"agent_id":"agent-1","available_capacity":4,"expires_at":"2026-08-29T12:01:00Z","host_generation":7,"host_id":"host-1","internal_endpoint":"wss://host-1.internal/hostlink","isolation_class":"cross_tenant_isolated","observed_at":"2026-08-29T12:00:00Z","placement":"pooled","runtime_compatibility_id":"runtime-2026-08","version":1}`,
 		},
 		{
 			name: "registry observation",
@@ -259,6 +260,7 @@ func TestHostLinkAdvertisementsRequireSafeRoute(t *testing.T) {
 		RuntimeCompatibilityID: "runtime-1",
 		Placement:              sessionwire.HostPlacementPooled,
 		InternalEndpoint:       "wss://host-1.internal/hostlink",
+		IsolationClass:         sessionwire.HostIsolationClassCrossTenantIsolated,
 		Accepting:              true,
 		AvailableCapacity:      1,
 		ObservedAt:             time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC),
@@ -302,6 +304,98 @@ func TestHostLinkAdvertisementsRequireSafeRoute(t *testing.T) {
 				t.Errorf("unsafe endpoint leaked into diagnostics: %v", err)
 			}
 		})
+	}
+}
+
+func TestHostLinkCapacityReportRequiresIsolationClassJSON(t *testing.T) {
+	t.Parallel()
+
+	const valid = `{"version":1,"host_id":"host-1","host_generation":1,"agent_id":"agent-1","runtime_compatibility_id":"runtime-1","placement":"pooled","internal_endpoint":"wss://host-1.internal/hostlink","isolation_class":"cross_tenant_isolated","accepting":true,"available_capacity":2,"observed_at":"2026-08-29T12:00:00Z","expires_at":"2026-08-29T12:01:00Z"}`
+	var report sessionwire.HostLinkCapacityReport
+	if err := json.Unmarshal([]byte(valid), &report); err != nil {
+		t.Fatalf("HostLinkCapacityReport.UnmarshalJSON() rejected a valid advertised isolation class: %v", err)
+	}
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("Marshal(HostLinkCapacityReport): %v", err)
+	}
+	if !bytes.Contains(data, []byte(`"isolation_class":"cross_tenant_isolated"`)) {
+		t.Errorf("HostLinkCapacityReport JSON omitted isolation class: %s", data)
+	}
+
+	for _, body := range []string{
+		`{"version":1,"host_id":"host-1","host_generation":1,"agent_id":"agent-1","runtime_compatibility_id":"runtime-1","placement":"pooled","internal_endpoint":"wss://host-1.internal/hostlink","accepting":true,"available_capacity":2,"observed_at":"2026-08-29T12:00:00Z","expires_at":"2026-08-29T12:01:00Z"}`,
+		`{"version":1,"host_id":"host-1","host_generation":1,"agent_id":"agent-1","runtime_compatibility_id":"runtime-1","placement":"pooled","internal_endpoint":"wss://host-1.internal/hostlink","isolation_class":null,"accepting":true,"available_capacity":2,"observed_at":"2026-08-29T12:00:00Z","expires_at":"2026-08-29T12:01:00Z"}`,
+		`{"version":1,"host_id":"host-1","host_generation":1,"agent_id":"agent-1","runtime_compatibility_id":"runtime-1","placement":"pooled","internal_endpoint":"wss://host-1.internal/hostlink","isolation_class":"","accepting":true,"available_capacity":2,"observed_at":"2026-08-29T12:00:00Z","expires_at":"2026-08-29T12:01:00Z"}`,
+		`{"version":1,"host_id":"host-1","host_generation":1,"agent_id":"agent-1","runtime_compatibility_id":"runtime-1","placement":"pooled","internal_endpoint":"wss://host-1.internal/hostlink","isolation_class":7,"accepting":true,"available_capacity":2,"observed_at":"2026-08-29T12:00:00Z","expires_at":"2026-08-29T12:01:00Z"}`,
+		`{"version":1,"host_id":"host-1","host_generation":1,"agent_id":"agent-1","runtime_compatibility_id":"runtime-1","placement":"pooled","internal_endpoint":"wss://host-1.internal/hostlink","isolation_class":"untrusted","accepting":true,"available_capacity":2,"observed_at":"2026-08-29T12:00:00Z","expires_at":"2026-08-29T12:01:00Z"}`,
+		`{"version":1,"host_id":"host-1","host_generation":1,"agent_id":"agent-1","runtime_compatibility_id":"runtime-1","placement":"pooled","internal_endpoint":"wss://host-1.internal/hostlink","isolation_class":"cross_tenant_isolated","isolation_class":"tenant_exclusive","accepting":true,"available_capacity":2,"observed_at":"2026-08-29T12:00:00Z","expires_at":"2026-08-29T12:01:00Z"}`,
+		`{"version":1,"host_id":"host-1","host_generation":1,"agent_id":"agent-1","runtime_compatibility_id":"runtime-1","placement":"pooled","internal_endpoint":"wss://host-1.internal/hostlink","isolation_class":"cross_tenant_isolated","raw_runtime_payload":{},"accepting":true,"available_capacity":2,"observed_at":"2026-08-29T12:00:00Z","expires_at":"2026-08-29T12:01:00Z"}`,
+	} {
+		var invalid sessionwire.HostLinkCapacityReport
+		if err := json.Unmarshal([]byte(body), &invalid); err == nil {
+			t.Fatalf("HostLinkCapacityReport.UnmarshalJSON() accepted invalid isolation class: %s", body)
+		}
+	}
+
+	for _, class := range []sessionwire.HostIsolationClass{"", "untrusted"} {
+		invalid := report
+		invalid.IsolationClass = class
+		if err := invalid.Validate(); err == nil {
+			t.Fatalf("HostLinkCapacityReport.Validate() accepted isolation class %q", class)
+		}
+		if _, err := json.Marshal(invalid); err == nil {
+			t.Fatalf("HostLinkCapacityReport.MarshalJSON() accepted isolation class %q", class)
+		}
+	}
+}
+
+func TestHostLinkCapacityReportBoundsDedicatedCapacity(t *testing.T) {
+	t.Parallel()
+
+	report := sessionwire.HostLinkCapacityReport{
+		Version:                sessionwire.CurrentWireVersion,
+		HostID:                 "host-1",
+		HostGeneration:         1,
+		AgentID:                "agent-1",
+		RuntimeCompatibilityID: "runtime-1",
+		Placement:              sessionwire.HostPlacementDedicated,
+		InternalEndpoint:       "wss://host-1.internal/hostlink",
+		IsolationClass:         sessionwire.HostIsolationClassTenantExclusive,
+		Accepting:              true,
+		ObservedAt:             time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC),
+		ExpiresAt:              time.Date(2026, 8, 29, 12, 1, 0, 0, time.UTC),
+	}
+	for _, capacity := range []uint64{0, 1} {
+		report.AvailableCapacity = capacity
+		if err := report.Validate(); err != nil {
+			t.Fatalf("HostLinkCapacityReport.Validate() dedicated capacity %d: %v", capacity, err)
+		}
+		data, err := json.Marshal(report)
+		if err != nil {
+			t.Fatalf("HostLinkCapacityReport.MarshalJSON() dedicated capacity %d: %v", capacity, err)
+		}
+		var decoded sessionwire.HostLinkCapacityReport
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			t.Fatalf("HostLinkCapacityReport.UnmarshalJSON() dedicated capacity %d: %v", capacity, err)
+		}
+		if decoded != report {
+			t.Errorf("HostLinkCapacityReport dedicated capacity %d round trip = %#v, want %#v", capacity, decoded, report)
+		}
+	}
+
+	report.AvailableCapacity = 2
+	if err := report.Validate(); err == nil {
+		t.Fatal("HostLinkCapacityReport.Validate() accepted dedicated capacity greater than one")
+	}
+	if _, err := json.Marshal(report); err == nil {
+		t.Fatal("HostLinkCapacityReport.MarshalJSON() accepted dedicated capacity greater than one")
+	}
+
+	const invalidWire = `{"version":1,"host_id":"host-1","host_generation":1,"agent_id":"agent-1","runtime_compatibility_id":"runtime-1","placement":"dedicated","internal_endpoint":"wss://host-1.internal/hostlink","isolation_class":"tenant_exclusive","accepting":true,"available_capacity":2,"observed_at":"2026-08-29T12:00:00Z","expires_at":"2026-08-29T12:01:00Z"}`
+	var decoded sessionwire.HostLinkCapacityReport
+	if err := json.Unmarshal([]byte(invalidWire), &decoded); err == nil {
+		t.Fatal("HostLinkCapacityReport.UnmarshalJSON() accepted dedicated capacity greater than one")
 	}
 }
 
