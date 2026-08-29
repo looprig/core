@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://looprig.dev/sessionwire/v1/ephemeral_publication.schema.json",
+  "title": "EphemeralPublication",
+  "description": "Forward-compatible best-effort public delta. It intentionally has no event_id, journal_seq, or covered_through durable promise; Core rejects those members on decode.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["tenant_id", "session_id", "body"],
+  "properties": {
+    "tenant_id": {"$ref": "#/$defs/id"},
+    "session_id": {"$ref": "#/$defs/id"},
+    "body": {"not": {"type": "null"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "description": "Opaque UTF-8 identity; Core enforces the 256-byte limit."}
+  }
+}

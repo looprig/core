@@ -47,7 +47,7 @@ func TestSessionPagePreservesUnknownResponseFields(t *testing.T) {
 func TestPublicJournalPageFixtureCoversPrivateGapsWithoutLeakingThem(t *testing.T) {
 	t.Parallel()
 
-	data, err := os.ReadFile("testdata/public_journal_page.json")
+	data, err := os.ReadFile("testdata/fixtures/public_journal_page.json")
 	if err != nil {
 		t.Fatalf("ReadFile fixture: %v", err)
 	}
