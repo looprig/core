@@ -134,6 +134,8 @@ field GateResponseRequest.SessionID SessionID `json:"session_id"`
 field GateResponseRequest.Values map[string]json.RawMessage `json:"values"`
 field HostLinkAttachRequest.ActorID string `json:"actor_id"`
 field HostLinkAttachRequest.AgentID AgentID `json:"agent_id"`
+field HostLinkAttachRequest.HostGeneration uint64 `json:"host_generation"`
+field HostLinkAttachRequest.HostID HostID `json:"host_id"`
 field HostLinkAttachRequest.IdempotencyKey string `json:"idempotency_key"`
 field HostLinkAttachRequest.Mode HostLinkAttachMode `json:"mode"`
 field HostLinkAttachRequest.RuntimeCompatibilityID string `json:"runtime_compatibility_id"`

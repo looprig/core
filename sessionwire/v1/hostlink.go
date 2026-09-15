@@ -10,7 +10,7 @@ import (
 // Declared member lists. Each record names its members exactly once; the
 // marshaller, the decoder, and the extension capture all read the same slice.
 var (
-	hostLinkAttachRequestMembers       = []string{"version", "tenant_id", "session_id", "agent_id", "runtime_compatibility_id", "mode", "actor_id", "trace_id", "idempotency_key"}
+	hostLinkAttachRequestMembers       = []string{"version", "tenant_id", "session_id", "host_id", "host_generation", "agent_id", "runtime_compatibility_id", "mode", "actor_id", "trace_id", "idempotency_key"}
 	hostLinkBindRequestMembers         = []string{"version", "tenant_id", "session_id", "host_id", "host_generation", "lease_epoch", "runtime_compatibility_id", "idempotency_key"}
 	hostLinkUnbindRequestMembers       = []string{"version", "tenant_id", "session_id", "host_id", "host_generation", "lease_epoch", "idempotency_key"}
 	hostLinkCommandDeliveryMembers     = []string{"command_id"}
@@ -85,16 +85,31 @@ const (
 	HostLinkAttachModeRestore HostLinkAttachMode = "restore"
 )
 
-// HostLinkAttachRequest asks a Host to make one session resident, sent as RPC
-// method HostLinkMethodAttach. It carries no lease epoch: the attach is what
-// acquires the lease and produces one.
+// HostLinkAttachRequest asks one Host incarnation to make one session resident,
+// sent as RPC method HostLinkMethodAttach.
 //
-// Mode rides the wire as the caller's statement of intent, not an instruction
-// the Host obeys blindly: a Host refuses an attach whose mode contradicts the
-// session's durable state. A restore of a session with nothing to restore from
-// is refused runtime_unavailable. A create that meets existing durable state
-// must still agree with that state's runtime build or is refused
-// runtime_mismatch; whether a create may meet existing state at all is the
+// HostID and HostGeneration name the Host incarnation the caller placed the
+// session on (from that Host's HostLinkCapacityReport) and fence the attach as
+// they fence bind, unbind and drain. A Host that is not that incarnation, such
+// as a replacement serving the same endpoint or the same Host restarted, must
+// refuse the attach before it acquires any lease, answering runtime_unavailable
+// as it does for a bind addressed to another Host or an earlier incarnation.
+// Without the fence such a Host would take the session lease and return an
+// observation the caller cannot bind to, stranding the session with no route.
+//
+// It carries no lease epoch. An attach to a session that is not resident
+// acquires the session lease, which produces a new epoch. An attach to a session
+// this Host already has resident acquires nothing and returns the existing
+// residency with its existing epoch.
+//
+// Mode rides the wire as the caller's statement of intent. A Host may refuse an
+// attach whose mode contradicts durable state; the one such refusal a Host makes
+// is a restore of a session with no durable state, or with no checkpoint when
+// its target requires one, refused runtime_unavailable. Mode is NOT a
+// create-identity guard. An attach to an already-resident session never reads
+// it, so a create against a live session succeeds idempotently and returns that
+// residency; and a create that meets existing durable state proceeds when the
+// runtime build agrees. Whether a create may meet existing state at all is the
 // create identity's idempotency question, not something this record decides.
 //
 // ActorID is the requesting SERVICE identity, not an end user. Placement may be
@@ -102,29 +117,44 @@ const (
 // names who asked for residency, never whose authority a later command carries.
 // TraceID is optional correlation context and confers nothing.
 //
-// A Host answers an accepted attach with a HostLinkRegistryObservation, whose
-// host_id, host_generation and lease_epoch are exactly what a following
+// A Host answers an accepted attach with a HostLinkRegistryObservation as the
+// reply body. Its host_id, host_generation and lease_epoch are what a following
 // HostLinkBindRequest needs, so the caller can bind immediately with the
-// returned epoch. A refused attach is answered with the existing HostLinkError
-// vocabulary; the codes an attach may answer are:
+// returned epoch. Attach is therefore, like the drain methods, an exception to
+// the empty body that accepts a bind or unbind: a Host must return the
+// observation, not an empty body. A refused attach is answered with the existing
+// HostLinkError vocabulary; the codes an attach may answer are:
 //
 //   - epoch_mismatch: the session lease is held by another owner, so the
-//     registry the caller placed from was stale;
-//   - runtime_mismatch: the runtime build or placement does not match what the
-//     request, the target, or the durable state requires;
-//   - no_capacity: the target's remaining admission capacity is too small;
+//     registry the caller placed from was stale. Its current_lease_epoch is
+//     that OTHER holder's epoch, possibly on another Host, and never an epoch
+//     this attach produced: a caller must not bind with it.
+//   - runtime_mismatch: the request disagrees with what is running or
+//     registered. The runtime build differs from the target's or the durable
+//     state's, the target does not support this Host's placement, the session
+//     is already resident as a different agent, a dedicated Host is fixed to a
+//     different session, or the launched runtime is bound to a different
+//     session or agent.
+//   - no_capacity: the target's admission weight exceeds this Host's remaining
+//     capacity.
 //   - not_admitting: the Host is draining, or its isolation class forbids
-//     admitting this tenant alongside the ones already resident;
-//   - runtime_unavailable: the Host registers no target for the agent, the
-//     session has no durable state to restore from, or the launched runtime is
-//     unusable.
+//     admitting this tenant alongside the ones already resident.
+//   - runtime_unavailable: the attach names another Host or an earlier
+//     incarnation of this one, the Host registers no usable target for the
+//     agent, a restore has no durable state or lacks a checkpoint its target
+//     requires, or the launched runtime had already stopped.
 //
-// A failure that is not a placement outcome (a store that failed, for example)
-// carries no HostLinkError code at all.
+// A failure that is not a placement outcome carries no HostLinkError code at
+// all. That covers a store that failed, and a launch that fails outright (a
+// runtime that refused to launch, produced nothing, or lacks a capability the
+// Host requires): re-placing it onto another Host running the same build would
+// be a stampede, not a recovery.
 type HostLinkAttachRequest struct {
 	Version                WireVersion        `json:"version"`
 	TenantID               TenantID           `json:"tenant_id"`
 	SessionID              SessionID          `json:"session_id"`
+	HostID                 HostID             `json:"host_id"`
+	HostGeneration         uint64             `json:"host_generation"`
 	AgentID                AgentID            `json:"agent_id"`
 	RuntimeCompatibilityID string             `json:"runtime_compatibility_id"`
 	Mode                   HostLinkAttachMode `json:"mode"`
@@ -133,13 +163,17 @@ type HostLinkAttachRequest struct {
 	IdempotencyKey         string             `json:"idempotency_key"`
 }
 
-// Validate reports whether the attach request names a complete session, target
-// runtime, closed mode, requesting service and retry-stable attach key.
+// Validate reports whether the attach request names a complete session, the
+// Host incarnation it was placed on, target runtime, closed mode, requesting
+// service and retry-stable attach key.
 func (r HostLinkAttachRequest) Validate() error {
 	if err := validateHostLinkVersion(r.Version); err != nil {
 		return err
 	}
 	if err := validateHostLinkScope(r.TenantID, r.SessionID); err != nil {
+		return err
+	}
+	if err := validateHostLinkHost(r.HostID, r.HostGeneration); err != nil {
 		return err
 	}
 	if err := r.AgentID.Validate(); err != nil {
@@ -170,6 +204,8 @@ func (r HostLinkAttachRequest) MarshalJSON() ([]byte, error) {
 		"version":                  r.Version,
 		"tenant_id":                r.TenantID,
 		"session_id":               r.SessionID,
+		"host_id":                  r.HostID,
+		"host_generation":          r.HostGeneration,
 		"agent_id":                 r.AgentID,
 		"runtime_compatibility_id": r.RuntimeCompatibilityID,
 		"mode":                     r.Mode,
@@ -201,6 +237,14 @@ func (r *HostLinkAttachRequest) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
+	hostID, err := decodeHostID(fields, "host_id")
+	if err != nil {
+		return err
+	}
+	hostGeneration, err := decodeRequiredNonZeroUint64(fields, "host_generation")
+	if err != nil {
+		return err
+	}
 	agentID, err := decodeAgentID(fields, "agent_id")
 	if err != nil {
 		return err
@@ -209,11 +253,8 @@ func (r *HostLinkAttachRequest) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	mode, err := decodeRequiredString(fields, "mode")
+	mode, err := decodeHostLinkAttachMode(fields)
 	if err != nil {
-		return err
-	}
-	if err := validateHostLinkAttachMode(HostLinkAttachMode(mode)); err != nil {
 		return err
 	}
 	actorID, err := decodeHostLinkOpaque(fields, "actor_id")
@@ -232,9 +273,11 @@ func (r *HostLinkAttachRequest) UnmarshalJSON(data []byte) error {
 		Version:                version,
 		TenantID:               tenantID,
 		SessionID:              sessionID,
+		HostID:                 hostID,
+		HostGeneration:         hostGeneration,
 		AgentID:                agentID,
 		RuntimeCompatibilityID: runtimeCompatibilityID,
-		Mode:                   HostLinkAttachMode(mode),
+		Mode:                   mode,
 		ActorID:                actorID,
 		TraceID:                traceID,
 		IdempotencyKey:         idempotencyKey,
@@ -1403,6 +1446,18 @@ func decodeHostLinkPlacement(fields map[string]json.RawMessage) (HostPlacement, 
 		return "", err
 	}
 	return placement, nil
+}
+
+func decodeHostLinkAttachMode(fields map[string]json.RawMessage) (HostLinkAttachMode, error) {
+	value, err := decodeRequiredString(fields, "mode")
+	if err != nil {
+		return "", err
+	}
+	mode := HostLinkAttachMode(value)
+	if err := validateHostLinkAttachMode(mode); err != nil {
+		return "", err
+	}
+	return mode, nil
 }
 
 func decodeHostIsolationClass(fields map[string]json.RawMessage) (HostIsolationClass, error) {
