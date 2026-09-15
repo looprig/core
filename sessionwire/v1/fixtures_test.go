@@ -43,6 +43,7 @@ func TestV1FixtureGoldensRoundTripThroughCoreRecords(t *testing.T) {
 		{"ephemeral_publication", v1GoldenRoundTrip[sessionwire.EphemeralPublication]},
 		{"journal_tip", v1GoldenRoundTrip[sessionwire.JournalTip]},
 		{"session_reset", v1GoldenRoundTrip[sessionwire.SessionReset]},
+		{"hostlink_attach_request", v1GoldenRoundTrip[sessionwire.HostLinkAttachRequest]},
 		{"hostlink_bind_request", v1GoldenRoundTrip[sessionwire.HostLinkBindRequest]},
 		{"hostlink_unbind_request", v1GoldenRoundTrip[sessionwire.HostLinkUnbindRequest]},
 		{"hostlink_command_delivery", v1GoldenRoundTrip[sessionwire.HostLinkCommandDelivery]},

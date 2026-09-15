@@ -25,6 +25,9 @@ const GateFieldKindSelect GateFieldKind = "select"
 const GateFieldKindText GateFieldKind = "text"
 const HostIsolationClassCrossTenantIsolated HostIsolationClass = "cross_tenant_isolated"
 const HostIsolationClassTenantExclusive HostIsolationClass = "tenant_exclusive"
+const HostLinkAttachModeCreate HostLinkAttachMode = "create"
+const HostLinkAttachModeRestore HostLinkAttachMode = "restore"
+const HostLinkChannelPrefix = "hostlink.v1."
 const HostLinkDrainStateDrained HostLinkDrainState = "drained"
 const HostLinkDrainStateDraining HostLinkDrainState = "draining"
 const HostLinkErrorEpochMismatch HostLinkErrorCode = "epoch_mismatch"
@@ -33,6 +36,11 @@ const HostLinkErrorNotAdmitting HostLinkErrorCode = "not_admitting"
 const HostLinkErrorReleasing HostLinkErrorCode = "releasing"
 const HostLinkErrorRuntimeMismatch HostLinkErrorCode = "runtime_mismatch"
 const HostLinkErrorRuntimeUnavailable HostLinkErrorCode = "runtime_unavailable"
+const HostLinkMethodAttach = "hostlink.attach"
+const HostLinkMethodBind = "hostlink.bind"
+const HostLinkMethodDrain = "hostlink.drain"
+const HostLinkMethodDrainStatus = "hostlink.drain_status"
+const HostLinkMethodUnbind = "hostlink.unbind"
 const HostPlacementDedicated HostPlacement = "dedicated"
 const HostPlacementPooled HostPlacement = "pooled"
 const IDValidationCodeEmpty IDValidationCode = "empty"
@@ -124,6 +132,15 @@ field GateResponseRequest.ExpectedOpenJournalSeq uint64 `json:"expected_open_jou
 field GateResponseRequest.GateID GateID `json:"gate_id"`
 field GateResponseRequest.SessionID SessionID `json:"session_id"`
 field GateResponseRequest.Values map[string]json.RawMessage `json:"values"`
+field HostLinkAttachRequest.ActorID string `json:"actor_id"`
+field HostLinkAttachRequest.AgentID AgentID `json:"agent_id"`
+field HostLinkAttachRequest.IdempotencyKey string `json:"idempotency_key"`
+field HostLinkAttachRequest.Mode HostLinkAttachMode `json:"mode"`
+field HostLinkAttachRequest.RuntimeCompatibilityID string `json:"runtime_compatibility_id"`
+field HostLinkAttachRequest.SessionID SessionID `json:"session_id"`
+field HostLinkAttachRequest.TenantID TenantID `json:"tenant_id"`
+field HostLinkAttachRequest.TraceID string `json:"trace_id,omitempty"`
+field HostLinkAttachRequest.Version WireVersion `json:"version"`
 field HostLinkBindRequest.HostGeneration uint64 `json:"host_generation"`
 field HostLinkBindRequest.HostID HostID `json:"host_id"`
 field HostLinkBindRequest.IdempotencyKey string `json:"idempotency_key"`
@@ -232,6 +249,7 @@ field VersionNegotiationRequest.SupportedVersions []WireVersion `json:"supported
 field VersionNegotiationResponse.Version WireVersion `json:"version"`
 func CanonicalDeadlineUnixMillis(deadline time.Time) string
 func DeterministicCommandID(domain string, fields ...string) (CommandID, error)
+func HostLinkChannel(tenantID TenantID, sessionID SessionID) string
 func NegotiateVersion(request VersionNegotiationRequest) (VersionNegotiationResponse, error)
 func SessionRecordTypeOf(data []byte) (SessionRecordType, error)
 method (*AgentCapabilitySummary) UnmarshalJSON(data []byte) error
@@ -252,6 +270,7 @@ method (*GatePromptField) UnmarshalJSON(data []byte) error
 method (*GatePromptOption) UnmarshalJSON(data []byte) error
 method (*GatePromptSchema) UnmarshalJSON(data []byte) error
 method (*GateResponseRequest) UnmarshalJSON(data []byte) error
+method (*HostLinkAttachRequest) UnmarshalJSON(data []byte) error
 method (*HostLinkBindRequest) UnmarshalJSON(data []byte) error
 method (*HostLinkCapacityReport) UnmarshalJSON(data []byte) error
 method (*HostLinkCommandDelivery) UnmarshalJSON(data []byte) error
@@ -326,6 +345,8 @@ method (GatePromptSchema) MarshalJSON() ([]byte, error)
 method (GatePromptSchema) Validate() error
 method (GateResponseRequest) Validate() error
 method (HostID) Validate() error
+method (HostLinkAttachRequest) MarshalJSON() ([]byte, error)
+method (HostLinkAttachRequest) Validate() error
 method (HostLinkBindRequest) MarshalJSON() ([]byte, error)
 method (HostLinkBindRequest) Validate() error
 method (HostLinkCapacityReport) MarshalJSON() ([]byte, error)
@@ -408,6 +429,8 @@ type GatePromptSchema struct
 type GateResponseRequest struct
 type HostID string
 type HostIsolationClass string
+type HostLinkAttachMode string
+type HostLinkAttachRequest struct
 type HostLinkBindRequest struct
 type HostLinkCapacityReport struct
 type HostLinkCommandDelivery struct

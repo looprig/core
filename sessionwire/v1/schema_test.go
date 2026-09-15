@@ -107,6 +107,7 @@ func TestV1FixturesMatchSchemaShapeAndExtensionPolicy(t *testing.T) {
 		"gate_response_request":           true,
 		"object_reference":                true,
 		"object_metadata":                 true,
+		"hostlink_attach_request":         true,
 		"hostlink_bind_request":           true,
 		"hostlink_unbind_request":         true,
 		"hostlink_command_delivery":       true,

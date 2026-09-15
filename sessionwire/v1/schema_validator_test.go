@@ -20,7 +20,7 @@ import (
 // contradictory minimum/const/minItems, or a dangling "$ref". Wave 2 TypeScript
 // drift-checking consumes these files, so they must be kept honest here.
 //
-// The evaluator supports exactly the keyword set the 33 published schemas use
+// The evaluator supports exactly the keyword set the 34 published schemas use
 // and FAILS LOUDLY on anything else, so an unsupported keyword can never be
 // silently ignored. Extending the schemas with a new keyword is therefore a
 // deliberate act that also extends this evaluator.

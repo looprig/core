@@ -10,6 +10,7 @@ import (
 // Declared member lists. Each record names its members exactly once; the
 // marshaller, the decoder, and the extension capture all read the same slice.
 var (
+	hostLinkAttachRequestMembers       = []string{"version", "tenant_id", "session_id", "agent_id", "runtime_compatibility_id", "mode", "actor_id", "trace_id", "idempotency_key"}
 	hostLinkBindRequestMembers         = []string{"version", "tenant_id", "session_id", "host_id", "host_generation", "lease_epoch", "runtime_compatibility_id", "idempotency_key"}
 	hostLinkUnbindRequestMembers       = []string{"version", "tenant_id", "session_id", "host_id", "host_generation", "lease_epoch", "idempotency_key"}
 	hostLinkCommandDeliveryMembers     = []string{"command_id"}
@@ -70,6 +71,178 @@ func (endpoint InternalEndpoint) Validate() error {
 	if parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
 		return invalidRequest(RequestValidationCodeInvalidField, "internal_endpoint")
 	}
+	return nil
+}
+
+// HostLinkAttachMode says whether an attach creates a session or restores one
+// over existing durable state. It is a closed set.
+type HostLinkAttachMode string
+
+const (
+	// HostLinkAttachModeCreate launches a new session.
+	HostLinkAttachModeCreate HostLinkAttachMode = "create"
+	// HostLinkAttachModeRestore relaunches a session over its durable state.
+	HostLinkAttachModeRestore HostLinkAttachMode = "restore"
+)
+
+// HostLinkAttachRequest asks a Host to make one session resident, sent as RPC
+// method HostLinkMethodAttach. It carries no lease epoch: the attach is what
+// acquires the lease and produces one.
+//
+// Mode rides the wire as the caller's statement of intent, not an instruction
+// the Host obeys blindly: a Host refuses an attach whose mode contradicts the
+// session's durable state. A restore of a session with nothing to restore from
+// is refused runtime_unavailable. A create that meets existing durable state
+// must still agree with that state's runtime build or is refused
+// runtime_mismatch; whether a create may meet existing state at all is the
+// create identity's idempotency question, not something this record decides.
+//
+// ActorID is the requesting SERVICE identity, not an end user. Placement may be
+// driven by a sweeper or reconciler with no live user behind it, so the field
+// names who asked for residency, never whose authority a later command carries.
+// TraceID is optional correlation context and confers nothing.
+//
+// A Host answers an accepted attach with a HostLinkRegistryObservation, whose
+// host_id, host_generation and lease_epoch are exactly what a following
+// HostLinkBindRequest needs, so the caller can bind immediately with the
+// returned epoch. A refused attach is answered with the existing HostLinkError
+// vocabulary; the codes an attach may answer are:
+//
+//   - epoch_mismatch: the session lease is held by another owner, so the
+//     registry the caller placed from was stale;
+//   - runtime_mismatch: the runtime build or placement does not match what the
+//     request, the target, or the durable state requires;
+//   - no_capacity: the target's remaining admission capacity is too small;
+//   - not_admitting: the Host is draining, or its isolation class forbids
+//     admitting this tenant alongside the ones already resident;
+//   - runtime_unavailable: the Host registers no target for the agent, the
+//     session has no durable state to restore from, or the launched runtime is
+//     unusable.
+//
+// A failure that is not a placement outcome (a store that failed, for example)
+// carries no HostLinkError code at all.
+type HostLinkAttachRequest struct {
+	Version                WireVersion        `json:"version"`
+	TenantID               TenantID           `json:"tenant_id"`
+	SessionID              SessionID          `json:"session_id"`
+	AgentID                AgentID            `json:"agent_id"`
+	RuntimeCompatibilityID string             `json:"runtime_compatibility_id"`
+	Mode                   HostLinkAttachMode `json:"mode"`
+	ActorID                string             `json:"actor_id"`
+	TraceID                string             `json:"trace_id,omitempty"`
+	IdempotencyKey         string             `json:"idempotency_key"`
+}
+
+// Validate reports whether the attach request names a complete session, target
+// runtime, closed mode, requesting service and retry-stable attach key.
+func (r HostLinkAttachRequest) Validate() error {
+	if err := validateHostLinkVersion(r.Version); err != nil {
+		return err
+	}
+	if err := validateHostLinkScope(r.TenantID, r.SessionID); err != nil {
+		return err
+	}
+	if err := r.AgentID.Validate(); err != nil {
+		return invalidRequest(RequestValidationCodeInvalidField, "agent_id")
+	}
+	if err := validateHostLinkOpaque(r.RuntimeCompatibilityID, "runtime_compatibility_id"); err != nil {
+		return err
+	}
+	if err := validateHostLinkAttachMode(r.Mode); err != nil {
+		return err
+	}
+	if err := validateHostLinkOpaque(r.ActorID, "actor_id"); err != nil {
+		return err
+	}
+	if r.TraceID != "" {
+		if err := validateHostLinkOpaque(r.TraceID, "trace_id"); err != nil {
+			return err
+		}
+	}
+	return validateHostLinkOpaque(r.IdempotencyKey, "idempotency_key")
+}
+
+func (r HostLinkAttachRequest) MarshalJSON() ([]byte, error) {
+	if err := r.Validate(); err != nil {
+		return nil, err
+	}
+	fields := map[string]any{
+		"version":                  r.Version,
+		"tenant_id":                r.TenantID,
+		"session_id":               r.SessionID,
+		"agent_id":                 r.AgentID,
+		"runtime_compatibility_id": r.RuntimeCompatibilityID,
+		"mode":                     r.Mode,
+		"actor_id":                 r.ActorID,
+		"idempotency_key":          r.IdempotencyKey,
+	}
+	if r.TraceID != "" {
+		fields["trace_id"] = r.TraceID
+	}
+	return marshalHostLinkFields(hostLinkAttachRequestMembers, fields)
+}
+
+// UnmarshalJSON fails closed because an attach is authenticated control-plane
+// input that acquires a lease; an unknown member is refused, not ignored.
+func (r *HostLinkAttachRequest) UnmarshalJSON(data []byte) error {
+	fields, err := decodeRequestFields(data, hostLinkAttachRequestMembers...)
+	if err != nil {
+		return err
+	}
+	version, err := decodeHostLinkVersion(fields)
+	if err != nil {
+		return err
+	}
+	tenantID, err := decodeTenantID(fields, "tenant_id")
+	if err != nil {
+		return err
+	}
+	sessionID, err := decodeSessionID(fields, "session_id")
+	if err != nil {
+		return err
+	}
+	agentID, err := decodeAgentID(fields, "agent_id")
+	if err != nil {
+		return err
+	}
+	runtimeCompatibilityID, err := decodeHostLinkOpaque(fields, "runtime_compatibility_id")
+	if err != nil {
+		return err
+	}
+	mode, err := decodeRequiredString(fields, "mode")
+	if err != nil {
+		return err
+	}
+	if err := validateHostLinkAttachMode(HostLinkAttachMode(mode)); err != nil {
+		return err
+	}
+	actorID, err := decodeHostLinkOpaque(fields, "actor_id")
+	if err != nil {
+		return err
+	}
+	traceID, err := decodeOptionalHostLinkOpaque(fields, "trace_id")
+	if err != nil {
+		return err
+	}
+	idempotencyKey, err := decodeHostLinkOpaque(fields, "idempotency_key")
+	if err != nil {
+		return err
+	}
+	decoded := HostLinkAttachRequest{
+		Version:                version,
+		TenantID:               tenantID,
+		SessionID:              sessionID,
+		AgentID:                agentID,
+		RuntimeCompatibilityID: runtimeCompatibilityID,
+		Mode:                   HostLinkAttachMode(mode),
+		ActorID:                actorID,
+		TraceID:                traceID,
+		IdempotencyKey:         idempotencyKey,
+	}
+	if err := decoded.Validate(); err != nil {
+		return err
+	}
+	*r = decoded
 	return nil
 }
 
@@ -1100,6 +1273,15 @@ func validateHostLinkPlacement(placement HostPlacement) error {
 		return nil
 	default:
 		return invalidRequest(RequestValidationCodeInvalidField, "placement")
+	}
+}
+
+func validateHostLinkAttachMode(mode HostLinkAttachMode) error {
+	switch mode {
+	case HostLinkAttachModeCreate, HostLinkAttachModeRestore:
+		return nil
+	default:
+		return invalidRequest(RequestValidationCodeInvalidField, "mode")
 	}
 }
 
