@@ -12,10 +12,25 @@ import (
 //
 // A HostLink begins with one version negotiation, carried in the transport's
 // connect exchange. Its framing is frozen here because the two ends once
-// disagreed on it — one wrapped the records as {"version_negotiation":{...}}
-// while the other sent and expected them bare — and a strict request decoder
-// on one side plus a tolerant response decoder on the other turned that
-// disagreement into a connect that failed silently with "version 0".
+// disagreed on it: Factory wrapped both records as
+// {"version_negotiation":{...}} while Host sent and expected them bare. That
+// disagreement had two failure modes, one behind the other. Against a shipped
+// Host the connect failed LOUDLY: Host's strict request decoder refused the
+// wrapped Data as an unknown member and disconnected with "unsupported wire
+// version". Had a Host accepted the wrapper instead, the failure would have
+// been SILENT on Factory's side: its wrapped decoder reads the bare reply
+// {"version":1} through a struct expecting the wrapper, finds no
+// version_negotiation member, and sees version 0. Both modes are pinned as
+// refusals by the helpers below.
+//
+// The capability signal is deliberately one-directional. Every reserved
+// HostLink method is Factory→Host, so only the reply carries hostlink_methods;
+// there is no Host-side gate a Factory→Host capability would inform. It also
+// could not be added additively: VersionNegotiationRequest is STRICT, so a new
+// request member is refused by every Host already shipped, before the Factory
+// can learn that Host's version. If a request-side capability is ever wanted,
+// the Host-side request decoder must first be relaxed to tolerate it in an
+// earlier release, and only then may Factories begin emitting it.
 //
 //   - The connect request's Data is the BARE VersionNegotiationRequest:
 //     {"supported_versions":[1]}. No wrapper, no envelope member.

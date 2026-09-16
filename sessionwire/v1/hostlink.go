@@ -1226,8 +1226,12 @@ func (r *VersionNegotiationRequest) UnmarshalJSON(data []byte) error {
 // re-encode and makes Supports the truthful "the peer advertised this".
 //
 // The set is held behind a pointer rather than as a slice field so the struct
-// stays comparable, as it was at v0.8.0; two replies that advertise nothing
-// still compare equal.
+// stays comparable, as it was at v0.8.0. Comparable is not value equality: on
+// a reply carrying methods or extensions, == compares the pointers and so
+// reports identity, not contents — two decodes of the same bytes are !=. Only
+// replies carrying neither compare by value, so two replies that advertise
+// nothing are equal. Compare what a reply advertises with Supports or
+// HostLinkMethods, and its extensions with AdditionalFields.
 type VersionNegotiationResponse struct {
 	Version WireVersion `json:"version"`
 
