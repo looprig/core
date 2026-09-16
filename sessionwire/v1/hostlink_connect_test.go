@@ -321,22 +321,39 @@ func TestVersionNegotiationResponseSchemaAgreesWithDecoder(t *testing.T) {
 	if problems, err := validateV1Instance(baseSchema, capability); err != nil || len(problems) != 0 {
 		t.Errorf("capability fixture does not validate against the base schema: %v %v", problems, err)
 	}
+	// Rows are decoded exactly as the validator's fixtures are (UseNumber), so
+	// "version":1 satisfies the const and any problem reported is about
+	// hostlink_methods; the well-formed control row proves that the rejections
+	// below are not the whole row failing for an unrelated reason.
+	parseRow := func(body string) any {
+		decoder := json.NewDecoder(strings.NewReader(body))
+		decoder.UseNumber()
+		var instance any
+		if err := decoder.Decode(&instance); err != nil {
+			t.Fatalf("parse %s: %v", body, err)
+		}
+		return instance
+	}
+	if problems, err := validateV1Instance(baseSchema, parseRow(`{"version":1,"hostlink_methods":["a"]}`)); err != nil || len(problems) != 0 {
+		t.Fatalf("base schema refuses a well-formed control row: %v %v", problems, err)
+	}
 	for name, body := range map[string]string{
 		"duplicate": `{"version":1,"hostlink_methods":["a","a"]}`,
 		"empty":     `{"version":1,"hostlink_methods":[""]}`,
 		"string":    `{"version":1,"hostlink_methods":"hostlink.attach"}`,
 		"number":    `{"version":1,"hostlink_methods":[1]}`,
 	} {
-		var instance any
-		if err := json.Unmarshal([]byte(body), &instance); err != nil {
-			t.Fatalf("parse %s: %v", name, err)
-		}
-		problems, err := validateV1Instance(baseSchema, instance)
+		problems, err := validateV1Instance(baseSchema, parseRow(body))
 		if err != nil {
 			t.Fatalf("evaluate base schema on %s: %v", name, err)
 		}
 		if len(problems) == 0 {
 			t.Errorf("base schema accepts %s row %s that the decoder refuses", name, body)
+		}
+		for _, problem := range problems {
+			if !strings.Contains(problem, "hostlink_methods") {
+				t.Errorf("base schema rejected %s row for a reason other than hostlink_methods: %s", name, problem)
+			}
 		}
 		var decoded sessionwire.VersionNegotiationResponse
 		if json.Unmarshal([]byte(body), &decoded) == nil {
