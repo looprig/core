@@ -18,8 +18,11 @@ var v080VersionNegotiationResponseMembers = []string{"version"}
 func TestVersionNegotiationResponseMemberListNamesHostLinkMethods(t *testing.T) {
 	t.Parallel()
 
-	want := []string{"version", "hostlink_methods"}
-	if !slices.Equal(versionNegotiationResponseMembers, want) {
+	// The member list is a set (the marshaller sorts), so compare it as one.
+	got := slices.Clone(versionNegotiationResponseMembers)
+	slices.Sort(got)
+	want := []string{"hostlink_methods", "version"}
+	if !slices.Equal(got, want) {
 		t.Fatalf("versionNegotiationResponseMembers = %v, want %v", versionNegotiationResponseMembers, want)
 	}
 }

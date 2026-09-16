@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	sessionwire "github.com/looprig/core/sessionwire/v1"
@@ -70,7 +71,21 @@ func TestVersionNegotiationResponseHostLinkMethodsRoundTrip(t *testing.T) {
 			t.Errorf("Supports(%q) = false, want true", method)
 		}
 	}
-	for _, method := range []string{sessionwire.HostLinkMethodDrain, sessionwire.HostLinkMethodDrainStatus, "hostlink.attac", "hostlink.attach ", "", "attach"} {
+	// Exact match only: a same-length wrong name, a name differing only in
+	// case, a prefix, a suffix and an unrelated reserved name are all false.
+	for _, method := range []string{
+		sessionwire.HostLinkMethodDrain,
+		sessionwire.HostLinkMethodDrainStatus,
+		"hostlink.detach", // same length as hostlink.attach
+		"hostlink.attacx", // same length, one byte off
+		"HostLink.Attach", // case-only variant
+		"HOSTLINK.BIND",
+		"hostlink.attac",
+		"hostlink.attach ",
+		" hostlink.attach",
+		"",
+		"attach",
+	} {
 		if decoded.Supports(method) {
 			t.Errorf("Supports(%q) = true, want exact-match false", method)
 		}
@@ -197,6 +212,22 @@ func TestVersionNegotiationResponseRejectsMalformedHostLinkMethods(t *testing.T)
 	}
 	var decoded sessionwire.VersionNegotiationResponse
 	assertValidationError(t, json.Unmarshal([]byte(`{"version":1,"hostlink_methods":["a"],"hostlink_methods":["b"]}`), &decoded), sessionwire.RequestValidationCodeDuplicateField, "hostlink_methods")
+
+	// The identifier bound the schema description advertises: MaxIDBytes is
+	// accepted, one more byte is refused, on the wire and through Validate.
+	atLimit := strings.Repeat("m", sessionwire.MaxIDBytes)
+	overLimit := atLimit + "m"
+	if err := json.Unmarshal([]byte(`{"version":1,"hostlink_methods":["`+atLimit+`"]}`), &decoded); err != nil || !decoded.Supports(atLimit) {
+		t.Errorf("a %d-byte method name was refused: %v", sessionwire.MaxIDBytes, err)
+	}
+	assertValidationError(t, json.Unmarshal([]byte(`{"version":1,"hostlink_methods":["`+overLimit+`"]}`), &decoded), sessionwire.RequestValidationCodeInvalidField, "hostlink_methods")
+	if err := (sessionwire.VersionNegotiationResponse{Version: sessionwire.CurrentWireVersion}).WithHostLinkMethods(atLimit).Validate(); err != nil {
+		t.Errorf("Validate refused a %d-byte method name: %v", sessionwire.MaxIDBytes, err)
+	}
+	assertValidationError(t, sessionwire.VersionNegotiationResponse{Version: sessionwire.CurrentWireVersion}.WithHostLinkMethods(overLimit).Validate(), sessionwire.RequestValidationCodeInvalidField, "hostlink_methods")
+	// The UTF-8 arm is unreachable from the wire (the body scan refuses it
+	// first) but reachable through the setter.
+	assertValidationError(t, sessionwire.VersionNegotiationResponse{Version: sessionwire.CurrentWireVersion}.WithHostLinkMethods("hostlink.\xff").Validate(), sessionwire.RequestValidationCodeInvalidField, "hostlink_methods")
 	// A malformed UTF-8 name fails the whole-body strict scan before any member
 	// is read, so it reports as invalid JSON like every other record.
 	assertValidationError(t, json.Unmarshal([]byte("{\"version\":1,\"hostlink_methods\":[\"hostlink.\xff\"]}"), &decoded), sessionwire.RequestValidationCodeInvalidJSON, "")
@@ -278,20 +309,67 @@ func TestVersionNegotiationResponseSchemaAgreesWithDecoder(t *testing.T) {
 		}
 	}
 
-	// The schema must NOT close the method names into an enum: the decoder
-	// tolerates a name it does not know, and a generated consumer that trusted
-	// a closed enum would refuse a newer Host's reply.
-	var items struct {
-		Items map[string]json.RawMessage `json:"items"`
+	// The base schema's hostlink_methods sub-schema is what a generated consumer
+	// (wui) trusts, and the same-stem fixture never carries the member, so the
+	// stem-matched validation run never evaluates it. Evaluate it here against
+	// real data: the capability fixture must validate under the BASE schema
+	// (the member is optional and additive), and the base schema must reject
+	// the two malformed rows the decoder rejects, so the schema is neither
+	// stricter nor looser than the decoder on type, uniqueItems and minLength.
+	baseSchema := readV1SchemaDocument(t, filepath.Join(v1SchemaDir, "version_negotiation_response.schema.json"))
+	capability := readV1Instance(t, filepath.Join(v1FixtureDir, "version_negotiation_response_hostlink_methods.json"))
+	if problems, err := validateV1Instance(baseSchema, capability); err != nil || len(problems) != 0 {
+		t.Errorf("capability fixture does not validate against the base schema: %v %v", problems, err)
 	}
-	if err := json.Unmarshal(schema.Properties["hostlink_methods"], &items); err != nil {
-		t.Fatalf("decode hostlink_methods schema: %v", err)
+	for name, body := range map[string]string{
+		"duplicate": `{"version":1,"hostlink_methods":["a","a"]}`,
+		"empty":     `{"version":1,"hostlink_methods":[""]}`,
+		"string":    `{"version":1,"hostlink_methods":"hostlink.attach"}`,
+		"number":    `{"version":1,"hostlink_methods":[1]}`,
+	} {
+		var instance any
+		if err := json.Unmarshal([]byte(body), &instance); err != nil {
+			t.Fatalf("parse %s: %v", name, err)
+		}
+		problems, err := validateV1Instance(baseSchema, instance)
+		if err != nil {
+			t.Fatalf("evaluate base schema on %s: %v", name, err)
+		}
+		if len(problems) == 0 {
+			t.Errorf("base schema accepts %s row %s that the decoder refuses", name, body)
+		}
+		var decoded sessionwire.VersionNegotiationResponse
+		if json.Unmarshal([]byte(body), &decoded) == nil {
+			t.Errorf("decoder accepts %s row %s", name, body)
+		}
 	}
-	if _, closed := items.Items["enum"]; closed {
-		t.Error("schema closes hostlink_methods items with an enum; the decoder is deliberately open to future method names")
-	}
-	if _, closed := items.Items["const"]; closed {
-		t.Error("schema closes hostlink_methods items with a const")
+
+	// Neither schema may close the method names into an enum or const: the
+	// decoder tolerates a name it does not know, and a generated consumer that
+	// trusted a closed set would refuse a newer Host's reply.
+	for _, stem := range []string{"version_negotiation_response", "version_negotiation_response_hostlink_methods"} {
+		raw, err := os.ReadFile(filepath.Join(v1SchemaDir, stem+".schema.json"))
+		if err != nil {
+			t.Fatalf("read schema %s: %v", stem, err)
+		}
+		var doc struct {
+			Properties struct {
+				HostLinkMethods struct {
+					Items map[string]json.RawMessage `json:"items"`
+				} `json:"hostlink_methods"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			t.Fatalf("decode schema %s: %v", stem, err)
+		}
+		if len(doc.Properties.HostLinkMethods.Items) == 0 {
+			t.Errorf("%s declares no items sub-schema for hostlink_methods", stem)
+		}
+		for _, keyword := range []string{"enum", "const"} {
+			if _, closed := doc.Properties.HostLinkMethods.Items[keyword]; closed {
+				t.Errorf("%s closes hostlink_methods items with %q; the decoder is deliberately open to future method names", stem, keyword)
+			}
+		}
 	}
 }
 
@@ -380,6 +458,23 @@ func TestVersionNegotiationResponseStaysComparable(t *testing.T) {
 	}
 	if a == a.WithHostLinkMethods(sessionwire.HostLinkMethodAttach) {
 		t.Error("a reply with an advertised method compares equal to one without")
+	}
+
+	// Nil and empty normalise to the same value: an explicit empty array on the
+	// wire, an empty non-nil slice through the setter, and clearing a set all
+	// compare equal to the absent form rather than merely marshalling like it.
+	var emptyArray sessionwire.VersionNegotiationResponse
+	if err := json.Unmarshal([]byte(`{"version":1,"hostlink_methods":[]}`), &emptyArray); err != nil {
+		t.Fatalf("Unmarshal(empty array): %v", err)
+	}
+	if emptyArray != a {
+		t.Errorf("decode of [] (%#v) != decode of absent member (%#v)", emptyArray, a)
+	}
+	if got := a.WithHostLinkMethods([]string{}...); got != a {
+		t.Errorf("WithHostLinkMethods(empty non-nil) = %#v, want %#v", got, a)
+	}
+	if got := a.WithHostLinkMethods(sessionwire.HostLinkMethodAttach).WithHostLinkMethods(); got != a {
+		t.Errorf("clearing a set = %#v, want %#v", got, a)
 	}
 }
 
