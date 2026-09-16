@@ -1,9 +1,35 @@
 package v1
 
-import "encoding/base64"
+import (
+	"encoding/base64"
+	"encoding/json"
+)
 
 // HostLink framing names. These are plain strings shared by the Factory and
 // Host ends of a HostLink; no transport type or adapter enters Core.
+//
+// # Connect framing
+//
+// A HostLink begins with one version negotiation, carried in the transport's
+// connect exchange. Its framing is frozen here because the two ends once
+// disagreed on it — one wrapped the records as {"version_negotiation":{...}}
+// while the other sent and expected them bare — and a strict request decoder
+// on one side plus a tolerant response decoder on the other turned that
+// disagreement into a connect that failed silently with "version 0".
+//
+//   - The connect request's Data is the BARE VersionNegotiationRequest:
+//     {"supported_versions":[1]}. No wrapper, no envelope member.
+//   - The connect reply's Data is the BARE VersionNegotiationResponse:
+//     {"version":1} at minimum, plus "hostlink_methods" when the Host
+//     advertises capabilities.
+//
+// EncodeHostLinkConnectRequest, DecodeHostLinkConnectRequest,
+// EncodeHostLinkConnectReply and DecodeHostLinkConnectReply are those two
+// shapes by name. They carry no transport type: each takes or returns the
+// Core record and the raw bytes a transport's connect event or reply carries.
+// Either end may equally call encoding/json on the record directly; the
+// helpers exist so the framing is a named API a test can pin rather than a
+// convention a module can drift from.
 //
 // A HostLink RPC names either a reserved method or a channel. The reserved
 // methods below are matched exactly, and none begins with
@@ -46,4 +72,41 @@ const HostLinkChannelPrefix = "hostlink.v1."
 func HostLinkChannel(tenantID TenantID, sessionID SessionID) string {
 	encoding := base64.RawURLEncoding
 	return HostLinkChannelPrefix + encoding.EncodeToString([]byte(tenantID)) + "." + encoding.EncodeToString([]byte(sessionID))
+}
+
+// EncodeHostLinkConnectRequest returns the bytes a HostLink connect carries as
+// its Data: the bare VersionNegotiationRequest. It refuses an offer that
+// VersionNegotiationRequest.Validate refuses.
+func EncodeHostLinkConnectRequest(request VersionNegotiationRequest) ([]byte, error) {
+	return json.Marshal(request)
+}
+
+// DecodeHostLinkConnectRequest reads a HostLink connect's Data as the bare
+// VersionNegotiationRequest. It is strict: a wrapped or otherwise unknown
+// member is refused with RequestValidationCodeUnknownField.
+func DecodeHostLinkConnectRequest(data []byte) (VersionNegotiationRequest, error) {
+	var request VersionNegotiationRequest
+	if err := json.Unmarshal(data, &request); err != nil {
+		return VersionNegotiationRequest{}, err
+	}
+	return request, nil
+}
+
+// EncodeHostLinkConnectReply returns the bytes a HostLink connect reply
+// carries as its Data: the bare VersionNegotiationResponse, with
+// hostlink_methods present only when the Host advertises capabilities.
+func EncodeHostLinkConnectReply(response VersionNegotiationResponse) ([]byte, error) {
+	return json.Marshal(response)
+}
+
+// DecodeHostLinkConnectReply reads a HostLink connect reply's Data as the bare
+// VersionNegotiationResponse. A reply without the version member — including
+// one wrapped as {"version_negotiation":{...}} — is refused with
+// RequestValidationCodeMissingField rather than read as version 0.
+func DecodeHostLinkConnectReply(data []byte) (VersionNegotiationResponse, error) {
+	var response VersionNegotiationResponse
+	if err := json.Unmarshal(data, &response); err != nil {
+		return VersionNegotiationResponse{}, err
+	}
+	return response, nil
 }

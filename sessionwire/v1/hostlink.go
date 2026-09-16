@@ -20,7 +20,7 @@ var (
 	hostLinkDrainObservationMembers    = []string{"host_id", "host_generation", "drain_generation", "state", "tenant_id", "session_id"}
 	hostLinkErrorMembers               = []string{"code", "current_lease_epoch", "runtime_compatibility_id"}
 	versionNegotiationRequestMembers   = []string{"supported_versions"}
-	versionNegotiationResponseMembers  = []string{"version"}
+	versionNegotiationResponseMembers  = []string{"version", "hostlink_methods"}
 )
 
 // HostPlacement identifies the admission model for one Host advertisement.
@@ -1204,10 +1204,35 @@ func (r *VersionNegotiationRequest) UnmarshalJSON(data []byte) error {
 // VersionNegotiationResponse selects the one current sessionwire version both
 // ends use. Unknown additive response fields are retained for public ClientLink
 // negotiation proxies; HostLink control requests remain strict.
+//
+// It also carries the optional hostlink_methods member: the set of reserved
+// HostLink methods the replying Host serves, by name (the HostLinkMethod*
+// constants). It is the capability signal a Factory gates on. A Host that
+// predates it answers without the member, which decodes as an empty set, and
+// a Factory must then not send a method it cannot see advertised — a v0.1.0
+// Host routes hostlink.attach as a channel and answers runtime_unavailable,
+// indistinguishable from a genuine refusal. Read it with Supports or
+// HostLinkMethods; a Host sets it with WithHostLinkMethods after
+// NegotiateVersion.
+//
+// The member is omitted when empty, so a reply that advertises nothing is
+// byte-identical to the v0.8.0 shape. On the wire it is validated as a SET of
+// non-empty identifiers — a duplicate or an empty name is invalid_field — but
+// a name this version has no constant for is TOLERATED AND RETAINED, not
+// refused: refusing would make the very first record a newer Host sends fail
+// every older Factory's connect, and a method added later by Host must not
+// break a Factory built against this version. Retaining (rather than
+// dropping) the name keeps a proxy from silently stripping a capability on
+// re-encode and makes Supports the truthful "the peer advertised this".
+//
+// The set is held behind a pointer rather than as a slice field so the struct
+// stays comparable, as it was at v0.8.0; two replies that advertise nothing
+// still compare equal.
 type VersionNegotiationResponse struct {
 	Version WireVersion `json:"version"`
 
-	extensions responseExtensions
+	hostLinkMethods *[]string
+	extensions      responseExtensions
 }
 
 // AdditionalFields returns copies of forward-compatible response members.
@@ -1215,9 +1240,52 @@ func (r VersionNegotiationResponse) AdditionalFields() map[string]json.RawMessag
 	return r.extensions.copy()
 }
 
-// Validate reports whether r selects this Core implementation's supported V1.
+// Supports reports whether the replying peer advertised method in its
+// hostlink_methods. It is an exact string match against the reserved method
+// names (HostLinkMethod*). It reports false for every method on a reply that
+// carried no hostlink_methods member, which is what a v0.8.0-era Host sends.
+func (r VersionNegotiationResponse) Supports(method string) bool {
+	if r.hostLinkMethods == nil {
+		return false
+	}
+	for _, advertised := range *r.hostLinkMethods {
+		if advertised == method {
+			return true
+		}
+	}
+	return false
+}
+
+// HostLinkMethods returns a copy of the advertised method names in wire order,
+// or nil when the reply advertised none.
+func (r VersionNegotiationResponse) HostLinkMethods() []string {
+	if r.hostLinkMethods == nil || len(*r.hostLinkMethods) == 0 {
+		return nil
+	}
+	return append([]string(nil), *r.hostLinkMethods...)
+}
+
+// WithHostLinkMethods returns a copy of r whose advertised set is exactly
+// methods; no methods clears it. The set is validated by Validate and
+// MarshalJSON, not here, so a Host builds the reply the same way it sets
+// Version.
+func (r VersionNegotiationResponse) WithHostLinkMethods(methods ...string) VersionNegotiationResponse {
+	if len(methods) == 0 {
+		r.hostLinkMethods = nil
+		return r
+	}
+	copied := append([]string(nil), methods...)
+	r.hostLinkMethods = &copied
+	return r
+}
+
+// Validate reports whether r selects this Core implementation's supported V1
+// and advertises a well-formed method set.
 func (r VersionNegotiationResponse) Validate() error {
-	return validateHostLinkVersion(r.Version)
+	if err := validateHostLinkVersion(r.Version); err != nil {
+		return err
+	}
+	return validateHostLinkMethodSet(r.HostLinkMethods())
 }
 
 func (r VersionNegotiationResponse) MarshalJSON() ([]byte, error) {
@@ -1227,6 +1295,11 @@ func (r VersionNegotiationResponse) MarshalJSON() ([]byte, error) {
 	fields := map[string]json.RawMessage{}
 	if err := putJSONField(fields, "version", r.Version); err != nil {
 		return nil, err
+	}
+	if methods := r.HostLinkMethods(); len(methods) > 0 {
+		if err := putJSONField(fields, "hostlink_methods", methods); err != nil {
+			return nil, err
+		}
 	}
 	return marshalResponseFields(versionNegotiationResponseMembers, fields, r.extensions)
 }
@@ -1240,15 +1313,64 @@ func (r *VersionNegotiationResponse) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
+	methods, err := decodeHostLinkMethodSet(fields)
+	if err != nil {
+		return err
+	}
 	decoded := VersionNegotiationResponse{
 		Version:    version,
 		extensions: captureExtensions(fields, versionNegotiationResponseMembers...),
-	}
+	}.WithHostLinkMethods(methods...)
 	if err := decoded.Validate(); err != nil {
 		return err
 	}
 	*r = decoded
 	return nil
+}
+
+// validateHostLinkMethodSet enforces the set rule on hostlink_methods: every
+// name is a non-empty, bounded, valid-UTF-8 identifier and no name repeats.
+// Membership in the HostLinkMethod* constants is deliberately NOT required;
+// see VersionNegotiationResponse.HostLinkMethods.
+func validateHostLinkMethodSet(methods []string) error {
+	seen := make(map[string]struct{}, len(methods))
+	for _, method := range methods {
+		if err := validateID(method); err != nil {
+			return invalidRequest(RequestValidationCodeInvalidField, "hostlink_methods")
+		}
+		if _, duplicate := seen[method]; duplicate {
+			return invalidRequest(RequestValidationCodeInvalidField, "hostlink_methods")
+		}
+		seen[method] = struct{}{}
+	}
+	return nil
+}
+
+// decodeHostLinkMethodSet reads the optional hostlink_methods member. An
+// absent member and an empty array both decode as no advertised methods; an
+// explicit null (which encoding/json leaves as a nil slice) or a non-array is
+// invalid_field, consistent with the other optional response members. A null
+// element decodes as the empty string and fails the set rule.
+func decodeHostLinkMethodSet(fields map[string]json.RawMessage) ([]string, error) {
+	raw, ok := fields["hostlink_methods"]
+	if !ok {
+		return nil, nil
+	}
+	var elements []json.RawMessage
+	if err := json.Unmarshal(raw, &elements); err != nil || elements == nil {
+		return nil, invalidRequest(RequestValidationCodeInvalidField, "hostlink_methods")
+	}
+	methods := make([]string, 0, len(elements))
+	for _, element := range elements {
+		method, err := decodeStrictJSONString(element)
+		if err != nil {
+			return nil, invalidRequest(RequestValidationCodeInvalidField, "hostlink_methods")
+		}
+		methods = append(methods, method)
+	}
+	// The set rule (non-empty names, no duplicates) is applied once, by the
+	// Validate call the decoder makes on the assembled record.
+	return methods, nil
 }
 
 // NegotiateVersion selects CurrentWireVersion when the peer advertises it.

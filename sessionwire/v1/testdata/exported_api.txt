@@ -250,7 +250,11 @@ field SessionSummary.Title string `json:"title,omitempty"`
 field VersionNegotiationRequest.SupportedVersions []WireVersion `json:"supported_versions"`
 field VersionNegotiationResponse.Version WireVersion `json:"version"`
 func CanonicalDeadlineUnixMillis(deadline time.Time) string
+func DecodeHostLinkConnectReply(data []byte) (VersionNegotiationResponse, error)
+func DecodeHostLinkConnectRequest(data []byte) (VersionNegotiationRequest, error)
 func DeterministicCommandID(domain string, fields ...string) (CommandID, error)
+func EncodeHostLinkConnectReply(response VersionNegotiationResponse) ([]byte, error)
+func EncodeHostLinkConnectRequest(request VersionNegotiationRequest) ([]byte, error)
 func HostLinkChannel(tenantID TenantID, sessionID SessionID) string
 func NegotiateVersion(request VersionNegotiationRequest) (VersionNegotiationResponse, error)
 func SessionRecordTypeOf(data []byte) (SessionRecordType, error)
@@ -399,8 +403,11 @@ method (TenantID) Validate() error
 method (VersionNegotiationRequest) MarshalJSON() ([]byte, error)
 method (VersionNegotiationRequest) Validate() error
 method (VersionNegotiationResponse) AdditionalFields() map[string]json.RawMessage
+method (VersionNegotiationResponse) HostLinkMethods() []string
 method (VersionNegotiationResponse) MarshalJSON() ([]byte, error)
+method (VersionNegotiationResponse) Supports(method string) bool
 method (VersionNegotiationResponse) Validate() error
+method (VersionNegotiationResponse) WithHostLinkMethods(methods ...string) VersionNegotiationResponse
 type AgentCapabilitySummary struct
 type AgentID string
 type CommandEnvelope struct

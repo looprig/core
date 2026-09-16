@@ -55,6 +55,7 @@ func TestV1FixtureGoldensRoundTripThroughCoreRecords(t *testing.T) {
 		{"hostlink_error_runtime_mismatch", v1GoldenRoundTrip[sessionwire.HostLinkError]},
 		{"version_negotiation_request", v1GoldenRoundTrip[sessionwire.VersionNegotiationRequest]},
 		{"version_negotiation_response", v1GoldenRoundTrip[sessionwire.VersionNegotiationResponse]},
+		{"version_negotiation_response_hostlink_methods", v1GoldenRoundTrip[sessionwire.VersionNegotiationResponse]},
 	}
 	decoders := make(map[string]struct{}, len(tests))
 	for _, tt := range tests {
