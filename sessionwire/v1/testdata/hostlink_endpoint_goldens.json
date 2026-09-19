@@ -1,0 +1,443 @@
+{
+  "provenance": "Derived by dialling host v0.2.1 (079abe4) links.handler() mounted as Service.Routes() mounts it (http.NewServeMux + Handle(\"/hostlink/\", ...)), go1.26.8, through a real net/http client and server. An endpoint is BASE + the exact path the router resolved to the same tenant.",
+  "base": "ws://host.internal:7443",
+  "rows": [
+    {
+      "id": "ascii-simple",
+      "tenant_hex": "74656e616e742d61",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/tenant-a"
+    },
+    {
+      "id": "single-A",
+      "tenant_hex": "41",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/A"
+    },
+    {
+      "id": "dot",
+      "tenant_hex": "2e",
+      "router_status": 307,
+      "router_same_tenant": false,
+      "refusal": "unroutable_tenant"
+    },
+    {
+      "id": "dotdot",
+      "tenant_hex": "2e2e",
+      "router_status": 307,
+      "router_same_tenant": false,
+      "refusal": "unroutable_tenant"
+    },
+    {
+      "id": "dotdotdot",
+      "tenant_hex": "2e2e2e",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/..."
+    },
+    {
+      "id": "dot-prefix",
+      "tenant_hex": "2e74656e616e74",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/.tenant"
+    },
+    {
+      "id": "dot-suffix",
+      "tenant_hex": "74656e616e742e",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/tenant."
+    },
+    {
+      "id": "slash",
+      "tenant_hex": "2f",
+      "router_status": 404,
+      "router_same_tenant": false,
+      "refusal": "unroutable_tenant"
+    },
+    {
+      "id": "slash-suffix",
+      "tenant_hex": "612f",
+      "router_status": 404,
+      "router_same_tenant": false,
+      "refusal": "unroutable_tenant"
+    },
+    {
+      "id": "slash-prefix",
+      "tenant_hex": "2f61",
+      "router_status": 404,
+      "router_same_tenant": false,
+      "refusal": "unroutable_tenant"
+    },
+    {
+      "id": "slash-mid",
+      "tenant_hex": "612f62",
+      "router_status": 404,
+      "router_same_tenant": false,
+      "refusal": "unroutable_tenant"
+    },
+    {
+      "id": "dot-slash",
+      "tenant_hex": "2e2f",
+      "router_status": 404,
+      "router_same_tenant": false,
+      "refusal": "unroutable_tenant"
+    },
+    {
+      "id": "slash-dotdot",
+      "tenant_hex": "2f2e2e",
+      "router_status": 404,
+      "router_same_tenant": false,
+      "refusal": "unroutable_tenant"
+    },
+    {
+      "id": "dotdot-slash-x",
+      "tenant_hex": "2e2e2f78",
+      "router_status": 404,
+      "router_same_tenant": false,
+      "refusal": "unroutable_tenant"
+    },
+    {
+      "id": "lit-%2F",
+      "tenant_hex": "253246",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%252F"
+    },
+    {
+      "id": "lit-a%2Fb",
+      "tenant_hex": "6125324662",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/a%252Fb"
+    },
+    {
+      "id": "lit-%2e",
+      "tenant_hex": "253265",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%252e"
+    },
+    {
+      "id": "lit-%2e%2e",
+      "tenant_hex": "253265253265",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%252e%252e"
+    },
+    {
+      "id": "lit-%2E%2E",
+      "tenant_hex": "253245253245",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%252E%252E"
+    },
+    {
+      "id": "percent",
+      "tenant_hex": "25",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%25"
+    },
+    {
+      "id": "lit-%zz",
+      "tenant_hex": "257a7a",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%25zz"
+    },
+    {
+      "id": "question",
+      "tenant_hex": "3f",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%3F"
+    },
+    {
+      "id": "hash",
+      "tenant_hex": "23",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%23"
+    },
+    {
+      "id": "space",
+      "tenant_hex": "20",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%20"
+    },
+    {
+      "id": "a-space-b",
+      "tenant_hex": "612062",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/a%20b"
+    },
+    {
+      "id": "plus",
+      "tenant_hex": "2b",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/+"
+    },
+    {
+      "id": "semicolon",
+      "tenant_hex": "3b",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%3B"
+    },
+    {
+      "id": "comma",
+      "tenant_hex": "2c",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%2C"
+    },
+    {
+      "id": "backslash-mid",
+      "tenant_hex": "615c62",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/a%5Cb"
+    },
+    {
+      "id": "dotdot-backslash",
+      "tenant_hex": "2e2e5c",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/..%5C"
+    },
+    {
+      "id": "userinfo-like",
+      "tenant_hex": "753a704068",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/u:p@h"
+    },
+    {
+      "id": "ipv6-like",
+      "tenant_hex": "5b3a3a315d",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%5B::1%5D"
+    },
+    {
+      "id": "tilde",
+      "tenant_hex": "7e",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/~"
+    },
+    {
+      "id": "subdelims",
+      "tenant_hex": "263d242c212728292a",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/&=$%2C%21%27%28%29%2A"
+    },
+    {
+      "id": "colon",
+      "tenant_hex": "3a",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/:"
+    },
+    {
+      "id": "at",
+      "tenant_hex": "40",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/@"
+    },
+    {
+      "id": "amp",
+      "tenant_hex": "26",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/&"
+    },
+    {
+      "id": "equals",
+      "tenant_hex": "3d",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/="
+    },
+    {
+      "id": "dollar",
+      "tenant_hex": "24",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/$"
+    },
+    {
+      "id": "e-acute",
+      "tenant_hex": "c3a9",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%C3%A9"
+    },
+    {
+      "id": "cjk",
+      "tenant_hex": "e7a79fe688b7",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%E7%A7%9F%E6%88%B7"
+    },
+    {
+      "id": "emoji",
+      "tenant_hex": "f09fa680",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%F0%9F%A6%80"
+    },
+    {
+      "id": "kelvin",
+      "tenant_hex": "e284aa",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%E2%84%AA"
+    },
+    {
+      "id": "division-slash",
+      "tenant_hex": "e28895",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%E2%88%95"
+    },
+    {
+      "id": "fullwidth-dots",
+      "tenant_hex": "efbc8eefbc8e",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%EF%BC%8E%EF%BC%8E"
+    },
+    {
+      "id": "nel",
+      "tenant_hex": "c285",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%C2%85"
+    },
+    {
+      "id": "nul",
+      "tenant_hex": "00",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%00"
+    },
+    {
+      "id": "tab",
+      "tenant_hex": "09",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%09"
+    },
+    {
+      "id": "lf",
+      "tenant_hex": "0a",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%0A"
+    },
+    {
+      "id": "cr",
+      "tenant_hex": "0d",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%0D"
+    },
+    {
+      "id": "del",
+      "tenant_hex": "7f",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%7F"
+    },
+    {
+      "id": "crlf-inject",
+      "tenant_hex": "610d0a583a2079",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/a%0D%0AX:%20y"
+    },
+    {
+      "id": "hostlink-word",
+      "tenant_hex": "686f73746c696e6b",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/hostlink"
+    },
+    {
+      "id": "upper-escape-like",
+      "tenant_hex": "253431",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%2541"
+    },
+    {
+      "id": "ascii-222",
+      "tenant_hex": "616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "id": "ascii-223",
+      "tenant_hex": "61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "id": "ascii-224",
+      "tenant_hex": "6161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "refusal": "too_long",
+      "endpoint_bytes": 257
+    },
+    {
+      "id": "eacute37-plus1",
+      "tenant_hex": "c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a961",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "endpoint": "ws://host.internal:7443/hostlink/%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9%C3%A9a"
+    },
+    {
+      "id": "eacute37-plus2",
+      "tenant_hex": "c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a9c3a96161",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "refusal": "too_long",
+      "endpoint_bytes": 257
+    },
+    {
+      "id": "ascii-256-core-max",
+      "tenant_hex": "61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+      "router_status": 200,
+      "router_same_tenant": true,
+      "refusal": "too_long",
+      "endpoint_bytes": 289
+    },
+    {
+      "id": "ascii-257-core-invalid",
+      "tenant_hex": "6161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161",
+      "router_status": 400,
+      "router_same_tenant": false,
+      "refusal": "invalid_tenant"
+    },
+    {
+      "id": "invalid-utf8",
+      "tenant_hex": "ff",
+      "router_status": 400,
+      "router_same_tenant": false,
+      "refusal": "invalid_tenant"
+    }
+  ]
+}

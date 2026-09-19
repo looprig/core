@@ -30,6 +30,12 @@ const HostLinkAttachModeRestore HostLinkAttachMode = "restore"
 const HostLinkChannelPrefix = "hostlink.v1."
 const HostLinkDrainStateDrained HostLinkDrainState = "drained"
 const HostLinkDrainStateDraining HostLinkDrainState = "draining"
+const HostLinkEndpointReasonBaseNamesTenant HostLinkEndpointReason = "base_names_tenant"
+const HostLinkEndpointReasonBaseNotBare HostLinkEndpointReason = "base_not_bare"
+const HostLinkEndpointReasonInvalidBase HostLinkEndpointReason = "invalid_base"
+const HostLinkEndpointReasonInvalidTenant HostLinkEndpointReason = "invalid_tenant"
+const HostLinkEndpointReasonTooLong HostLinkEndpointReason = "too_long"
+const HostLinkEndpointReasonUnroutableTenant HostLinkEndpointReason = "unroutable_tenant"
 const HostLinkErrorEpochMismatch HostLinkErrorCode = "epoch_mismatch"
 const HostLinkErrorNoCapacity HostLinkErrorCode = "no_capacity"
 const HostLinkErrorNotAdmitting HostLinkErrorCode = "not_admitting"
@@ -41,6 +47,7 @@ const HostLinkMethodBind = "hostlink.bind"
 const HostLinkMethodDrain = "hostlink.drain"
 const HostLinkMethodDrainStatus = "hostlink.drain_status"
 const HostLinkMethodUnbind = "hostlink.unbind"
+const HostLinkPathPrefix = "/hostlink/"
 const HostPlacementDedicated HostPlacement = "dedicated"
 const HostPlacementPooled HostPlacement = "pooled"
 const IDValidationCodeEmpty IDValidationCode = "empty"
@@ -176,6 +183,8 @@ field HostLinkDrainRequest.IdempotencyKey string `json:"idempotency_key"`
 field HostLinkDrainRequest.SessionID SessionID `json:"session_id,omitempty"`
 field HostLinkDrainRequest.TenantID TenantID `json:"tenant_id,omitempty"`
 field HostLinkDrainRequest.Version WireVersion `json:"version"`
+field HostLinkEndpointError.Err error
+field HostLinkEndpointError.Reason HostLinkEndpointReason
 field HostLinkError.Code HostLinkErrorCode `json:"code"`
 field HostLinkError.CurrentLeaseEpoch uint64 `json:"current_lease_epoch,omitempty"`
 field HostLinkError.RuntimeCompatibilityID string `json:"runtime_compatibility_id,omitempty"`
@@ -256,6 +265,7 @@ func DeterministicCommandID(domain string, fields ...string) (CommandID, error)
 func EncodeHostLinkConnectReply(response VersionNegotiationResponse) ([]byte, error)
 func EncodeHostLinkConnectRequest(request VersionNegotiationRequest) ([]byte, error)
 func HostLinkChannel(tenantID TenantID, sessionID SessionID) string
+func HostLinkEndpoint(base InternalEndpoint, tenant TenantID) (InternalEndpoint, error)
 func NegotiateVersion(request VersionNegotiationRequest) (VersionNegotiationResponse, error)
 func SessionRecordTypeOf(data []byte) (SessionRecordType, error)
 method (*AgentCapabilitySummary) UnmarshalJSON(data []byte) error
@@ -282,6 +292,8 @@ method (*HostLinkCapacityReport) UnmarshalJSON(data []byte) error
 method (*HostLinkCommandDelivery) UnmarshalJSON(data []byte) error
 method (*HostLinkDrainObservation) UnmarshalJSON(data []byte) error
 method (*HostLinkDrainRequest) UnmarshalJSON(data []byte) error
+method (*HostLinkEndpointError) Error() string
+method (*HostLinkEndpointError) Unwrap() error
 method (*HostLinkError) UnmarshalJSON(data []byte) error
 method (*HostLinkRegistryObservation) UnmarshalJSON(data []byte) error
 method (*HostLinkUnbindRequest) UnmarshalJSON(data []byte) error
@@ -446,6 +458,8 @@ type HostLinkCommandDelivery struct
 type HostLinkDrainObservation struct
 type HostLinkDrainRequest struct
 type HostLinkDrainState string
+type HostLinkEndpointError struct
+type HostLinkEndpointReason string
 type HostLinkError struct
 type HostLinkErrorCode string
 type HostLinkRegistryObservation struct
