@@ -96,37 +96,37 @@ func HostLinkChannel(tenantID TenantID, sessionID SessionID) string {
 // segment naming that tenant. It is the value host v0.2.1 serves at.
 const HostLinkPathPrefix = "/hostlink/"
 
-// HostLinkEndpointReason is a stable, machine-readable reason HostLinkEndpoint
+// HostLinkEndpointCode is a stable, machine-readable reason HostLinkEndpoint
 // could not derive a tenant's HostLink address. A caller branches on it rather
 // than on error text; the set grows only additively.
-type HostLinkEndpointReason string
+type HostLinkEndpointCode string
 
 const (
-	// HostLinkEndpointReasonInvalidBase: the base fails
+	// HostLinkEndpointCodeInvalidBase: the base fails
 	// InternalEndpoint.Validate. The error wraps that *RequestValidationError.
-	HostLinkEndpointReasonInvalidBase HostLinkEndpointReason = "invalid_base"
-	// HostLinkEndpointReasonBaseNamesTenant: the base's path is already
+	HostLinkEndpointCodeInvalidBase HostLinkEndpointCode = "invalid_base"
+	// HostLinkEndpointCodeBaseNamesTenant: the base's path is already
 	// HostLinkPathPrefix, with or without a tenant segment. This is how a
 	// host v0.2.1 endpoint, which advertised one tenant's link, is spelled; it
 	// is not a base, and appending a second tenant to it could never route.
-	HostLinkEndpointReasonBaseNamesTenant HostLinkEndpointReason = "base_names_tenant"
-	// HostLinkEndpointReasonBaseNotBare: the base carries something besides a
+	HostLinkEndpointCodeBaseNamesTenant HostLinkEndpointCode = "base_names_tenant"
+	// HostLinkEndpointCodeBaseNotBare: the base carries something besides a
 	// scheme, an authority and at most one trailing '/': any other path, or an
 	// empty fragment marker ('#', which InternalEndpoint.Validate tolerates
 	// because net/url drops an empty fragment, but which would swallow an
 	// appended path).
-	HostLinkEndpointReasonBaseNotBare HostLinkEndpointReason = "base_not_bare"
-	// HostLinkEndpointReasonInvalidTenant: the tenant fails TenantID.Validate.
+	HostLinkEndpointCodeBaseNotBare HostLinkEndpointCode = "base_not_bare"
+	// HostLinkEndpointCodeInvalidTenant: the tenant fails TenantID.Validate.
 	// The error wraps that *IDValidationError.
-	HostLinkEndpointReasonInvalidTenant HostLinkEndpointReason = "invalid_tenant"
-	// HostLinkEndpointReasonUnroutableTenant: the tenant is a legal Core
+	HostLinkEndpointCodeInvalidTenant HostLinkEndpointCode = "invalid_tenant"
+	// HostLinkEndpointCodeUnroutableTenant: the tenant is a legal Core
 	// identity that a Host's HostLink router cannot be relied on to resolve:
 	// "." and "..", or any tenant containing '/'. See HostLinkEndpoint.
-	HostLinkEndpointReasonUnroutableTenant HostLinkEndpointReason = "unroutable_tenant"
-	// HostLinkEndpointReasonTooLong: the derived address is longer than
+	HostLinkEndpointCodeUnroutableTenant HostLinkEndpointCode = "unroutable_tenant"
+	// HostLinkEndpointCodeTooLong: the derived address is longer than
 	// MaxIDBytes, so it would fail InternalEndpoint.Validate. The limit counts
 	// the ESCAPED tenant, so a tenant well under MaxIDBytes can exceed it.
-	HostLinkEndpointReasonTooLong HostLinkEndpointReason = "too_long"
+	HostLinkEndpointCodeTooLong HostLinkEndpointCode = "too_long"
 )
 
 // HostLinkEndpointError reports why HostLinkEndpoint refused. Its text names
@@ -134,12 +134,12 @@ const (
 // lower-level validation error for the invalid_base and invalid_tenant reasons
 // and nil otherwise.
 type HostLinkEndpointError struct {
-	Reason HostLinkEndpointReason
-	Err    error
+	Code HostLinkEndpointCode
+	Err  error
 }
 
 func (e *HostLinkEndpointError) Error() string {
-	return "sessionwire/v1: cannot derive HostLink endpoint: " + string(e.Reason)
+	return "sessionwire/v1: cannot derive HostLink endpoint: " + string(e.Code)
 }
 
 // Unwrap returns the lower-level validation error, if any.
@@ -205,25 +205,25 @@ func (e *HostLinkEndpointError) Unwrap() error { return e.Err }
 // Upgrade Factory with Host.
 func HostLinkEndpoint(base InternalEndpoint, tenant TenantID) (InternalEndpoint, error) {
 	if err := base.Validate(); err != nil {
-		return "", &HostLinkEndpointError{Reason: HostLinkEndpointReasonInvalidBase, Err: err}
+		return "", &HostLinkEndpointError{Code: HostLinkEndpointCodeInvalidBase, Err: err}
 	}
 	// Validate has just parsed base successfully, so this parse cannot fail.
 	parsed, _ := url.Parse(string(base))
 	if parsed.Path == strings.TrimSuffix(HostLinkPathPrefix, "/") || strings.HasPrefix(parsed.Path, HostLinkPathPrefix) {
-		return "", &HostLinkEndpointError{Reason: HostLinkEndpointReasonBaseNamesTenant}
+		return "", &HostLinkEndpointError{Code: HostLinkEndpointCodeBaseNamesTenant}
 	}
 	if (parsed.Path != "" && parsed.Path != "/") || strings.Contains(string(base), "#") {
-		return "", &HostLinkEndpointError{Reason: HostLinkEndpointReasonBaseNotBare}
+		return "", &HostLinkEndpointError{Code: HostLinkEndpointCodeBaseNotBare}
 	}
 	if err := tenant.Validate(); err != nil {
-		return "", &HostLinkEndpointError{Reason: HostLinkEndpointReasonInvalidTenant, Err: err}
+		return "", &HostLinkEndpointError{Code: HostLinkEndpointCodeInvalidTenant, Err: err}
 	}
 	if tenant == "." || tenant == ".." || strings.Contains(string(tenant), "/") {
-		return "", &HostLinkEndpointError{Reason: HostLinkEndpointReasonUnroutableTenant}
+		return "", &HostLinkEndpointError{Code: HostLinkEndpointCodeUnroutableTenant}
 	}
 	endpoint := strings.TrimSuffix(string(base), "/") + HostLinkPathPrefix + url.PathEscape(string(tenant))
 	if len(endpoint) > MaxIDBytes {
-		return "", &HostLinkEndpointError{Reason: HostLinkEndpointReasonTooLong}
+		return "", &HostLinkEndpointError{Code: HostLinkEndpointCodeTooLong}
 	}
 	return InternalEndpoint(endpoint), nil
 }

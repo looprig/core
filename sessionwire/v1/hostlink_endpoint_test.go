@@ -80,7 +80,7 @@ func TestHostLinkEndpointMatchesHostRouterGoldens(t *testing.T) {
 				}
 				return
 			}
-			assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointReason(row.Refusal))
+			assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointCode(row.Refusal))
 		})
 		reason := row.Refusal
 		if reason == "" {
@@ -138,7 +138,7 @@ func TestHostLinkEndpointGoldensCoverTheControllerProbeList(t *testing.T) {
 	}
 }
 
-func assertHostLinkEndpointRefusal(t *testing.T, got sessionwire.InternalEndpoint, err error, want sessionwire.HostLinkEndpointReason) {
+func assertHostLinkEndpointRefusal(t *testing.T, got sessionwire.InternalEndpoint, err error, want sessionwire.HostLinkEndpointCode) {
 	t.Helper()
 	if err == nil {
 		t.Fatalf("HostLinkEndpoint = %q, want refusal %s", got, want)
@@ -150,8 +150,8 @@ func assertHostLinkEndpointRefusal(t *testing.T, got sessionwire.InternalEndpoin
 	if !errors.As(err, &endpointErr) {
 		t.Fatalf("error %T %v is not a *HostLinkEndpointError", err, err)
 	}
-	if endpointErr.Reason != want {
-		t.Fatalf("Reason = %q, want %q (err: %v)", endpointErr.Reason, want, err)
+	if endpointErr.Code != want {
+		t.Fatalf("Code = %q, want %q (err: %v)", endpointErr.Code, want, err)
 	}
 }
 
@@ -186,27 +186,27 @@ func TestHostLinkEndpointBase(t *testing.T) {
 	refused := []struct {
 		name string
 		base string
-		want sessionwire.HostLinkEndpointReason
+		want sessionwire.HostLinkEndpointCode
 	}{
-		{"empty", "", sessionwire.HostLinkEndpointReasonInvalidBase},
-		{"http scheme", "http://host.internal:7443", sessionwire.HostLinkEndpointReasonInvalidBase},
-		{"query", "ws://host.internal:7443?token=x", sessionwire.HostLinkEndpointReasonInvalidBase},
-		{"userinfo", "ws://u:p@host.internal:7443", sessionwire.HostLinkEndpointReasonInvalidBase},
-		{"no host", "ws:///hostlink/tenant-a", sessionwire.HostLinkEndpointReasonInvalidBase},
-		{"v0.2.1 per-tenant endpoint", "ws://host.internal:7443/hostlink/tenant-a", sessionwire.HostLinkEndpointReasonBaseNamesTenant},
-		{"hostlink prefix only", "ws://host.internal:7443/hostlink/", sessionwire.HostLinkEndpointReasonBaseNamesTenant},
-		{"hostlink without slash", "ws://host.internal:7443/hostlink", sessionwire.HostLinkEndpointReasonBaseNamesTenant},
-		{"hostlink tenant with trailing slash", "ws://host.internal:7443/hostlink/tenant-a/", sessionwire.HostLinkEndpointReasonBaseNamesTenant},
-		{"escaped hostlink segment", "ws://host.internal:7443/%68ostlink/tenant-a", sessionwire.HostLinkEndpointReasonBaseNamesTenant},
-		{"other path", "ws://host.internal:7443/prefix", sessionwire.HostLinkEndpointReasonBaseNotBare},
+		{"empty", "", sessionwire.HostLinkEndpointCodeInvalidBase},
+		{"http scheme", "http://host.internal:7443", sessionwire.HostLinkEndpointCodeInvalidBase},
+		{"query", "ws://host.internal:7443?token=x", sessionwire.HostLinkEndpointCodeInvalidBase},
+		{"userinfo", "ws://u:p@host.internal:7443", sessionwire.HostLinkEndpointCodeInvalidBase},
+		{"no host", "ws:///hostlink/tenant-a", sessionwire.HostLinkEndpointCodeInvalidBase},
+		{"v0.2.1 per-tenant endpoint", "ws://host.internal:7443/hostlink/tenant-a", sessionwire.HostLinkEndpointCodeBaseNamesTenant},
+		{"hostlink prefix only", "ws://host.internal:7443/hostlink/", sessionwire.HostLinkEndpointCodeBaseNamesTenant},
+		{"hostlink without slash", "ws://host.internal:7443/hostlink", sessionwire.HostLinkEndpointCodeBaseNamesTenant},
+		{"hostlink tenant with trailing slash", "ws://host.internal:7443/hostlink/tenant-a/", sessionwire.HostLinkEndpointCodeBaseNamesTenant},
+		{"escaped hostlink segment", "ws://host.internal:7443/%68ostlink/tenant-a", sessionwire.HostLinkEndpointCodeBaseNamesTenant},
+		{"other path", "ws://host.internal:7443/prefix", sessionwire.HostLinkEndpointCodeBaseNotBare},
 		// A segment that merely begins with "hostlink" is some other path, not
 		// a tenant's link: the prefix is matched with its trailing '/'.
-		{"segment beginning hostlink", "ws://host.internal:7443/hostlinks", sessionwire.HostLinkEndpointReasonBaseNotBare},
-		{"segment beginning hostlink with child", "ws://host.internal:7443/hostlinkx/tenant-a", sessionwire.HostLinkEndpointReasonBaseNotBare},
-		{"path under a prefix", "ws://host.internal:7443/prefix/hostlink/tenant-a", sessionwire.HostLinkEndpointReasonBaseNotBare},
-		{"two trailing slashes", "ws://host.internal:7443//", sessionwire.HostLinkEndpointReasonBaseNotBare},
-		{"empty fragment marker", "ws://host.internal:7443#", sessionwire.HostLinkEndpointReasonBaseNotBare},
-		{"slash then empty fragment marker", "ws://host.internal:7443/#", sessionwire.HostLinkEndpointReasonBaseNotBare},
+		{"segment beginning hostlink", "ws://host.internal:7443/hostlinks", sessionwire.HostLinkEndpointCodeBaseNotBare},
+		{"segment beginning hostlink with child", "ws://host.internal:7443/hostlinkx/tenant-a", sessionwire.HostLinkEndpointCodeBaseNotBare},
+		{"path under a prefix", "ws://host.internal:7443/prefix/hostlink/tenant-a", sessionwire.HostLinkEndpointCodeBaseNotBare},
+		{"two trailing slashes", "ws://host.internal:7443//", sessionwire.HostLinkEndpointCodeBaseNotBare},
+		{"empty fragment marker", "ws://host.internal:7443#", sessionwire.HostLinkEndpointCodeBaseNotBare},
+		{"slash then empty fragment marker", "ws://host.internal:7443/#", sessionwire.HostLinkEndpointCodeBaseNotBare},
 	}
 	for _, tt := range refused {
 		t.Run("refuses "+tt.name, func(t *testing.T) {
@@ -235,7 +235,7 @@ func TestHostLinkEndpointRefusalPrecedenceAndCauses(t *testing.T) {
 	t.Run("an invalid base is reported before an invalid tenant", func(t *testing.T) {
 		t.Parallel()
 		got, err := sessionwire.HostLinkEndpoint("", "")
-		assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointReasonInvalidBase)
+		assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointCodeInvalidBase)
 		var cause *sessionwire.RequestValidationError
 		if !errors.As(err, &cause) || cause.Code != sessionwire.RequestValidationCodeMissingField || cause.Field != "internal_endpoint" {
 			t.Fatalf("cause = %#v, want InternalEndpoint.Validate's missing internal_endpoint", cause)
@@ -244,7 +244,7 @@ func TestHostLinkEndpointRefusalPrecedenceAndCauses(t *testing.T) {
 	t.Run("a base naming a tenant is reported before an unroutable tenant", func(t *testing.T) {
 		t.Parallel()
 		got, err := sessionwire.HostLinkEndpoint("ws://h/hostlink/x", ".")
-		assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointReasonBaseNamesTenant)
+		assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointCodeBaseNamesTenant)
 	})
 	t.Run("an invalid tenant carries Core's identity code", func(t *testing.T) {
 		t.Parallel()
@@ -254,7 +254,7 @@ func TestHostLinkEndpointRefusalPrecedenceAndCauses(t *testing.T) {
 			"\xff": sessionwire.IDValidationCodeInvalidUTF8,
 		} {
 			got, err := sessionwire.HostLinkEndpoint("ws://h", tenant)
-			assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointReasonInvalidTenant)
+			assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointCodeInvalidTenant)
 			var cause *sessionwire.IDValidationError
 			if !errors.As(err, &cause) || cause.Code != code {
 				t.Fatalf("cause = %#v, want IDValidationError %s", cause, code)
@@ -264,7 +264,7 @@ func TestHostLinkEndpointRefusalPrecedenceAndCauses(t *testing.T) {
 	t.Run("an invalid tenant is reported before an overlong endpoint", func(t *testing.T) {
 		t.Parallel()
 		got, err := sessionwire.HostLinkEndpoint("ws://h", sessionwire.TenantID(strings.Repeat("a", 257)))
-		assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointReasonInvalidTenant)
+		assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointCodeInvalidTenant)
 	})
 	t.Run("refusals without a lower cause unwrap to nil", func(t *testing.T) {
 		t.Parallel()
@@ -311,33 +311,33 @@ func TestHostLinkEndpointErrorNamesNoValue(t *testing.T) {
 			t.Errorf("error text %q echoes a caller value", err.Error())
 		}
 	}
-	for _, reason := range []sessionwire.HostLinkEndpointReason{
-		sessionwire.HostLinkEndpointReasonInvalidBase,
-		sessionwire.HostLinkEndpointReasonBaseNamesTenant,
-		sessionwire.HostLinkEndpointReasonBaseNotBare,
-		sessionwire.HostLinkEndpointReasonInvalidTenant,
-		sessionwire.HostLinkEndpointReasonUnroutableTenant,
-		sessionwire.HostLinkEndpointReasonTooLong,
+	for _, reason := range []sessionwire.HostLinkEndpointCode{
+		sessionwire.HostLinkEndpointCodeInvalidBase,
+		sessionwire.HostLinkEndpointCodeBaseNamesTenant,
+		sessionwire.HostLinkEndpointCodeBaseNotBare,
+		sessionwire.HostLinkEndpointCodeInvalidTenant,
+		sessionwire.HostLinkEndpointCodeUnroutableTenant,
+		sessionwire.HostLinkEndpointCodeTooLong,
 	} {
-		text := (&sessionwire.HostLinkEndpointError{Reason: reason}).Error()
+		text := (&sessionwire.HostLinkEndpointError{Code: reason}).Error()
 		if text != "sessionwire/v1: cannot derive HostLink endpoint: "+string(reason) {
 			t.Errorf("Error() = %q", text)
 		}
 	}
 }
 
-// TestHostLinkEndpointReasonStrings pins the reason vocabulary by value: a
+// TestHostLinkEndpointCodeStrings pins the reason vocabulary by value: a
 // caller branches on these strings, so renaming one is a breaking change.
-func TestHostLinkEndpointReasonStrings(t *testing.T) {
+func TestHostLinkEndpointCodeStrings(t *testing.T) {
 	t.Parallel()
 
-	for got, want := range map[sessionwire.HostLinkEndpointReason]string{
-		sessionwire.HostLinkEndpointReasonInvalidBase:      "invalid_base",
-		sessionwire.HostLinkEndpointReasonBaseNamesTenant:  "base_names_tenant",
-		sessionwire.HostLinkEndpointReasonBaseNotBare:      "base_not_bare",
-		sessionwire.HostLinkEndpointReasonInvalidTenant:    "invalid_tenant",
-		sessionwire.HostLinkEndpointReasonUnroutableTenant: "unroutable_tenant",
-		sessionwire.HostLinkEndpointReasonTooLong:          "too_long",
+	for got, want := range map[sessionwire.HostLinkEndpointCode]string{
+		sessionwire.HostLinkEndpointCodeInvalidBase:      "invalid_base",
+		sessionwire.HostLinkEndpointCodeBaseNamesTenant:  "base_names_tenant",
+		sessionwire.HostLinkEndpointCodeBaseNotBare:      "base_not_bare",
+		sessionwire.HostLinkEndpointCodeInvalidTenant:    "invalid_tenant",
+		sessionwire.HostLinkEndpointCodeUnroutableTenant: "unroutable_tenant",
+		sessionwire.HostLinkEndpointCodeTooLong:          "too_long",
 	} {
 		if string(got) != want {
 			t.Errorf("reason %q, want %q", got, want)
@@ -363,12 +363,12 @@ func TestHostLinkEndpointLengthBoundary(t *testing.T) {
 		t.Fatalf("len = %d, want exactly %d", len(fits), sessionwire.MaxIDBytes)
 	}
 	got, err := sessionwire.HostLinkEndpoint(base, sessionwire.TenantID(strings.Repeat("a", 240)))
-	assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointReasonTooLong)
+	assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointCodeTooLong)
 
 	// The limit counts ESCAPED bytes: 79 × "é" is 158 tenant bytes but 474
 	// endpoint bytes, and a tenant whose raw length fits is still refused.
 	got, err = sessionwire.HostLinkEndpoint(base, sessionwire.TenantID(strings.Repeat("é", 79)))
-	assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointReasonTooLong)
+	assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointCodeTooLong)
 	// 39 × "é" escapes to 234 bytes: 7 + 10 + 234 = 251, accepted.
 	if _, err := sessionwire.HostLinkEndpoint(base, sessionwire.TenantID(strings.Repeat("é", 39))); err != nil {
 		t.Fatalf("a 251-byte multibyte endpoint was refused: %v", err)
@@ -465,22 +465,22 @@ func FuzzHostLinkEndpointRoutesToItsTenant(f *testing.F) {
 			if !errors.As(err, &endpointErr) {
 				t.Fatalf("untyped refusal %T: %v", err, err)
 			}
-			switch endpointErr.Reason {
-			case sessionwire.HostLinkEndpointReasonInvalidTenant:
+			switch endpointErr.Code {
+			case sessionwire.HostLinkEndpointCodeInvalidTenant:
 				if sessionwire.TenantID(tenant).Validate() == nil {
 					t.Fatalf("refused a Core-valid tenant as invalid")
 				}
-			case sessionwire.HostLinkEndpointReasonUnroutableTenant:
+			case sessionwire.HostLinkEndpointCodeUnroutableTenant:
 				code, resolved, routeErr := routeThroughHostV021(router, base+"/hostlink/"+url.PathEscape(tenant))
 				if routeErr == nil && code == http.StatusOK && resolved == tenant {
 					t.Fatalf("refused as unroutable a tenant Host's router resolves")
 				}
-			case sessionwire.HostLinkEndpointReasonTooLong:
+			case sessionwire.HostLinkEndpointCodeTooLong:
 				if len(base)+len("/hostlink/")+len(url.PathEscape(tenant)) <= sessionwire.MaxIDBytes {
 					t.Fatalf("refused as too long an endpoint that fits")
 				}
 			default:
-				t.Fatalf("unexpected reason %q", endpointErr.Reason)
+				t.Fatalf("unexpected reason %q", endpointErr.Code)
 			}
 			return
 		}

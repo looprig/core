@@ -30,12 +30,12 @@ const HostLinkAttachModeRestore HostLinkAttachMode = "restore"
 const HostLinkChannelPrefix = "hostlink.v1."
 const HostLinkDrainStateDrained HostLinkDrainState = "drained"
 const HostLinkDrainStateDraining HostLinkDrainState = "draining"
-const HostLinkEndpointReasonBaseNamesTenant HostLinkEndpointReason = "base_names_tenant"
-const HostLinkEndpointReasonBaseNotBare HostLinkEndpointReason = "base_not_bare"
-const HostLinkEndpointReasonInvalidBase HostLinkEndpointReason = "invalid_base"
-const HostLinkEndpointReasonInvalidTenant HostLinkEndpointReason = "invalid_tenant"
-const HostLinkEndpointReasonTooLong HostLinkEndpointReason = "too_long"
-const HostLinkEndpointReasonUnroutableTenant HostLinkEndpointReason = "unroutable_tenant"
+const HostLinkEndpointCodeBaseNamesTenant HostLinkEndpointCode = "base_names_tenant"
+const HostLinkEndpointCodeBaseNotBare HostLinkEndpointCode = "base_not_bare"
+const HostLinkEndpointCodeInvalidBase HostLinkEndpointCode = "invalid_base"
+const HostLinkEndpointCodeInvalidTenant HostLinkEndpointCode = "invalid_tenant"
+const HostLinkEndpointCodeTooLong HostLinkEndpointCode = "too_long"
+const HostLinkEndpointCodeUnroutableTenant HostLinkEndpointCode = "unroutable_tenant"
 const HostLinkErrorEpochMismatch HostLinkErrorCode = "epoch_mismatch"
 const HostLinkErrorNoCapacity HostLinkErrorCode = "no_capacity"
 const HostLinkErrorNotAdmitting HostLinkErrorCode = "not_admitting"
@@ -183,8 +183,8 @@ field HostLinkDrainRequest.IdempotencyKey string `json:"idempotency_key"`
 field HostLinkDrainRequest.SessionID SessionID `json:"session_id,omitempty"`
 field HostLinkDrainRequest.TenantID TenantID `json:"tenant_id,omitempty"`
 field HostLinkDrainRequest.Version WireVersion `json:"version"`
+field HostLinkEndpointError.Code HostLinkEndpointCode
 field HostLinkEndpointError.Err error
-field HostLinkEndpointError.Reason HostLinkEndpointReason
 field HostLinkError.Code HostLinkErrorCode `json:"code"`
 field HostLinkError.CurrentLeaseEpoch uint64 `json:"current_lease_epoch,omitempty"`
 field HostLinkError.RuntimeCompatibilityID string `json:"runtime_compatibility_id,omitempty"`
@@ -458,8 +458,8 @@ type HostLinkCommandDelivery struct
 type HostLinkDrainObservation struct
 type HostLinkDrainRequest struct
 type HostLinkDrainState string
+type HostLinkEndpointCode string
 type HostLinkEndpointError struct
-type HostLinkEndpointReason string
 type HostLinkError struct
 type HostLinkErrorCode string
 type HostLinkRegistryObservation struct
