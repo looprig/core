@@ -105,10 +105,13 @@ const (
 	// HostLinkEndpointCodeInvalidBase: the base fails
 	// InternalEndpoint.Validate. The error wraps that *RequestValidationError.
 	HostLinkEndpointCodeInvalidBase HostLinkEndpointCode = "invalid_base"
-	// HostLinkEndpointCodeBaseNamesTenant: the base's path is already
-	// HostLinkPathPrefix, with or without a tenant segment. This is how a
-	// host v0.2.1 endpoint, which advertised one tenant's link, is spelled; it
-	// is not a base, and appending a second tenant to it could never route.
+	// HostLinkEndpointCodeBaseNamesTenant: the base's decoded path is
+	// "/hostlink" or begins with HostLinkPathPrefix, with or without a tenant
+	// segment after it. This is how a working host v0.2.1 deployment spells
+	// the one tenant's link it advertises; it is not a base, and appending a
+	// second tenant to it could never route. The match is case-exact, as
+	// Host's router is: "/HOSTLINK/x" names no tenant (host v0.2.1 answers
+	// it 404) and is refused as base_not_bare instead.
 	HostLinkEndpointCodeBaseNamesTenant HostLinkEndpointCode = "base_names_tenant"
 	// HostLinkEndpointCodeBaseNotBare: the base carries something besides a
 	// scheme, an authority and at most one trailing '/': any other path, or an
@@ -129,8 +132,10 @@ const (
 	HostLinkEndpointCodeTooLong HostLinkEndpointCode = "too_long"
 )
 
-// HostLinkEndpointError reports why HostLinkEndpoint refused. Its text names
-// the reason only, never the base or tenant, so it is safe to log. Err is the
+// HostLinkEndpointError reports why HostLinkEndpoint refused. Its text is
+// exactly "sessionwire/v1: cannot derive HostLink endpoint: " followed by the
+// code; it names neither the base, the tenant nor the wrapped cause, so it is
+// safe to log. Err is the
 // lower-level validation error for the invalid_base and invalid_tenant reasons
 // and nil otherwise.
 type HostLinkEndpointError struct {
@@ -170,15 +175,20 @@ func (e *HostLinkEndpointError) Unwrap() error { return e.Err }
 // # What it refuses
 //
 // It refuses, with a *HostLinkEndpointError, every input that cannot produce a
-// routable, valid address, checking the base before the tenant:
+// routable, valid address. It checks in the order listed and reports the
+// first that applies, so the base is judged before the tenant, and an invalid
+// tenant before an unroutable one before an overlong one:
 //
 //   - a base that fails InternalEndpoint.Validate (invalid_base);
-//   - a base whose path is already HostLinkPathPrefix, as a host v0.2.1
-//     per-tenant endpoint is (base_names_tenant);
+//   - a base whose path is "/hostlink" or begins with HostLinkPathPrefix
+//     (case-exact), as a working host v0.2.1 per-tenant endpoint's does
+//     (base_names_tenant);
 //   - a base with any other path, or an empty fragment marker
-//     (base_not_bare). A path prefix is refused rather than preserved because
-//     a Host serves HostLinkPathPrefix at its root; admitting one later is an
-//     additive relaxation, while refusing one later would not be;
+//     (base_not_bare). That includes an endpoint behind an ingress path
+//     prefix, such as ".../p/hostlink/t". A path prefix is refused rather than
+//     preserved because a Host serves HostLinkPathPrefix at its root;
+//     admitting one later is an additive relaxation, while refusing one later
+//     would not be;
 //   - a tenant that fails TenantID.Validate (invalid_tenant);
 //   - "." and "..", and any tenant containing '/' (unroutable_tenant). A Go
 //     http.ServeMux path-cleans "/hostlink/." and "/hostlink/.." and redirects
@@ -186,9 +196,10 @@ func (e *HostLinkEndpointError) Unwrap() error { return e.Err }
 //     not, since the server decodes it — can never be. "." and ".." do reach
 //     host v0.2.1 when spelled "%2E" and "%2E%2E", but only because Go 1.22's
 //     mux cleans the escaped path: under GODEBUG=httpmuxgo121=1 every
-//     spelling is redirected, and RFC 3986 lets any intermediary decode a
-//     percent-encoded unreserved character and then remove the dot segment.
-//     An address that routes only by that accident is refused;
+//     spelling is redirected, and RFC 3986 treats "%2E" and "." as equivalent
+//     (section 6.2.2), so a normalising intermediary may rewrite one to the
+//     other and then remove the dot segment. An address that routes only by
+//     that accident is refused;
 //   - a derived address longer than MaxIDBytes (too_long).
 //
 // It returns an endpoint that passes InternalEndpoint.Validate whenever it
@@ -196,13 +207,25 @@ func (e *HostLinkEndpointError) Unwrap() error { return e.Err }
 //
 // # Compatibility window
 //
-// A host v0.2.1 advertises its full per-tenant address (base plus
-// "/hostlink/<tenant>"), and a Factory predating this rule dials the advertised
-// endpoint verbatim. The two halves of the change must therefore move together:
-// a Host that advertises a BASE, dialled verbatim by an older Factory, answers
-// 404, because the base's path names no tenant segment; and a Factory deriving
-// addresses from a v0.2.1 Host's advertised endpoint gets base_names_tenant.
-// Upgrade Factory with Host.
+// Host v0.2.1 advertises its configured internal endpoint verbatim, checking
+// only InternalEndpoint.Validate, and a Factory predating this rule dials the
+// advertised endpoint verbatim. The per-tenant spelling (base plus
+// "/hostlink/<tenant>") was therefore a deployment convention, not a Host
+// property: it is the only spelling an older Factory could reach a Host by.
+//
+//   - A Host that advertises a BASE, dialled verbatim by an older Factory,
+//     answers 404, because the base's path names no tenant segment.
+//   - A deriving Factory refuses a conventional v0.2.1 per-tenant endpoint
+//     with base_names_tenant, and one behind an ingress path prefix with
+//     base_not_bare.
+//   - A host v0.2.1 RECONFIGURED to advertise a bare base already works with a
+//     deriving Factory, with no Host upgrade, because v0.2.1 already serves
+//     every tenant at HostLinkPathPrefix plus that tenant. It then no longer
+//     works with an older Factory.
+//
+// So what must move together is the advertised value and the Factory: switch
+// a Host's configured endpoint to a base only once every Factory dialling it
+// derives addresses.
 func HostLinkEndpoint(base InternalEndpoint, tenant TenantID) (InternalEndpoint, error) {
 	if err := base.Validate(); err != nil {
 		return "", &HostLinkEndpointError{Code: HostLinkEndpointCodeInvalidBase, Err: err}
