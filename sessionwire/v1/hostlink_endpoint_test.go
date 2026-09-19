@@ -81,6 +81,19 @@ func TestHostLinkEndpointMatchesHostRouterGoldens(t *testing.T) {
 				return
 			}
 			assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointCode(row.Refusal))
+			// endpoint_bytes is recorded only for too_long rows, where it is the
+			// length the Host-routed spelling would have had. It is recomputed
+			// here from the base and the dialled spelling, not from the rule.
+			wantBytes := 0
+			if row.Refusal == string(sessionwire.HostLinkEndpointCodeTooLong) {
+				wantBytes = len(goldens.Base) + len("/hostlink/") + len(url.PathEscape(string(tenant)))
+				if wantBytes <= sessionwire.MaxIDBytes {
+					t.Fatalf("too_long golden is %d bytes, which fits", wantBytes)
+				}
+			}
+			if row.EndpointBytes != wantBytes {
+				t.Fatalf("golden endpoint_bytes = %d, want %d", row.EndpointBytes, wantBytes)
+			}
 		})
 		reason := row.Refusal
 		if reason == "" {
@@ -203,6 +216,13 @@ func TestHostLinkEndpointBase(t *testing.T) {
 		// a tenant's link: the prefix is matched with its trailing '/'.
 		{"segment beginning hostlink", "ws://host.internal:7443/hostlinks", sessionwire.HostLinkEndpointCodeBaseNotBare},
 		{"segment beginning hostlink with child", "ws://host.internal:7443/hostlinkx/tenant-a", sessionwire.HostLinkEndpointCodeBaseNotBare},
+		// Host's router is case-sensitive: host v0.2.1 answers /HOSTLINK/x and
+		// /Hostlink/x with 404, so such a path names no tenant. It is some
+		// other path and refused as not bare, matched case-exactly.
+		{"upper-case hostlink segment", "ws://host.internal:7443/HOSTLINK/tenant-a", sessionwire.HostLinkEndpointCodeBaseNotBare},
+		{"mixed-case hostlink segment", "ws://host.internal:7443/Hostlink/tenant-a", sessionwire.HostLinkEndpointCodeBaseNotBare},
+		{"upper-case bare hostlink", "ws://host.internal:7443/HOSTLINK", sessionwire.HostLinkEndpointCodeBaseNotBare},
+		{"ingress path prefix before a tenant", "ws://host.internal:7443/p/hostlink/tenant-a", sessionwire.HostLinkEndpointCodeBaseNotBare},
 		{"path under a prefix", "ws://host.internal:7443/prefix/hostlink/tenant-a", sessionwire.HostLinkEndpointCodeBaseNotBare},
 		{"two trailing slashes", "ws://host.internal:7443//", sessionwire.HostLinkEndpointCodeBaseNotBare},
 		{"empty fragment marker", "ws://host.internal:7443#", sessionwire.HostLinkEndpointCodeBaseNotBare},
@@ -265,6 +285,53 @@ func TestHostLinkEndpointRefusalPrecedenceAndCauses(t *testing.T) {
 		t.Parallel()
 		got, err := sessionwire.HostLinkEndpoint("ws://h", sessionwire.TenantID(strings.Repeat("a", 257)))
 		assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointCodeInvalidTenant)
+	})
+	t.Run("an invalid tenant is reported before an unroutable one", func(t *testing.T) {
+		t.Parallel()
+		for tenant, code := range map[sessionwire.TenantID]sessionwire.IDValidationCode{
+			"\xff/": sessionwire.IDValidationCodeInvalidUTF8,
+			"/\xff": sessionwire.IDValidationCodeInvalidUTF8,
+			sessionwire.TenantID(strings.Repeat("/", 257)): sessionwire.IDValidationCodeTooLong,
+		} {
+			got, err := sessionwire.HostLinkEndpoint("ws://h", tenant)
+			assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointCodeInvalidTenant)
+			var cause *sessionwire.IDValidationError
+			if !errors.As(err, &cause) || cause.Code != code {
+				t.Fatalf("cause = %#v, want IDValidationError %s", cause, code)
+			}
+		}
+	})
+	t.Run("an unroutable tenant is reported before an overlong endpoint", func(t *testing.T) {
+		t.Parallel()
+		for _, tenant := range []sessionwire.TenantID{
+			sessionwire.TenantID(strings.Repeat("/", 100)),
+			sessionwire.TenantID("a/" + strings.Repeat("a", 250)),
+		} {
+			got, err := sessionwire.HostLinkEndpoint("ws://h", tenant)
+			assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointCodeUnroutableTenant)
+		}
+	})
+	t.Run("error text names only the code, even with a cause", func(t *testing.T) {
+		t.Parallel()
+		for _, call := range []struct {
+			base   sessionwire.InternalEndpoint
+			tenant sessionwire.TenantID
+			code   sessionwire.HostLinkEndpointCode
+		}{
+			{"", "t", sessionwire.HostLinkEndpointCodeInvalidBase},
+			{"http://h", "t", sessionwire.HostLinkEndpointCodeInvalidBase},
+			{"ws://h", "", sessionwire.HostLinkEndpointCodeInvalidTenant},
+			{"ws://h", "\xff", sessionwire.HostLinkEndpointCodeInvalidTenant},
+			{"ws://h/hostlink/x", "t", sessionwire.HostLinkEndpointCodeBaseNamesTenant},
+			{"ws://h/p", "t", sessionwire.HostLinkEndpointCodeBaseNotBare},
+			{"ws://h", ".", sessionwire.HostLinkEndpointCodeUnroutableTenant},
+			{"ws://h", sessionwire.TenantID(strings.Repeat("a", 250)), sessionwire.HostLinkEndpointCodeTooLong},
+		} {
+			_, err := sessionwire.HostLinkEndpoint(call.base, call.tenant)
+			if err == nil || err.Error() != "sessionwire/v1: cannot derive HostLink endpoint: "+string(call.code) {
+				t.Errorf("HostLinkEndpoint(%q, …) error text = %v, want exactly the %s code text", call.base, err, call.code)
+			}
+		}
 	})
 	t.Run("refusals without a lower cause unwrap to nil", func(t *testing.T) {
 		t.Parallel()
@@ -373,16 +440,50 @@ func TestHostLinkEndpointLengthBoundary(t *testing.T) {
 	if _, err := sessionwire.HostLinkEndpoint(base, sessionwire.TenantID(strings.Repeat("é", 39))); err != nil {
 		t.Fatalf("a 251-byte multibyte endpoint was refused: %v", err)
 	}
+
+	// The trimmed base is what is counted: "wss://x/" contributes 7 bytes, not
+	// 8, so 239 tenant bytes still fit exactly.
+	fits, err = sessionwire.HostLinkEndpoint("wss://x/", sessionwire.TenantID(strings.Repeat("a", 239)))
+	if err != nil {
+		t.Fatalf("a %d-byte endpoint from a slash-terminated base was refused: %v", sessionwire.MaxIDBytes, err)
+	}
+	if len(fits) != sessionwire.MaxIDBytes {
+		t.Fatalf("len = %d, want exactly %d", len(fits), sessionwire.MaxIDBytes)
+	}
+	got, err = sessionwire.HostLinkEndpoint("wss://x/", sessionwire.TenantID(strings.Repeat("a", 240)))
+	assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointCodeTooLong)
+
+	// InternalEndpoint.Validate accepts a non-ASCII host, and the limit counts
+	// BYTES: "ws://é" is 6 runes but 7 bytes, so 239 tenant bytes fit exactly
+	// and 240 do not, although 240 would fit if runes were counted.
+	const nonASCII = "ws://é"
+	if err := sessionwire.InternalEndpoint(nonASCII).Validate(); err != nil {
+		t.Fatalf("control: Validate refuses a non-ASCII host (%v); the byte-count row is then moot", err)
+	}
+	fits, err = sessionwire.HostLinkEndpoint(nonASCII, sessionwire.TenantID(strings.Repeat("a", 239)))
+	if err != nil || len(fits) != sessionwire.MaxIDBytes || fits.Validate() != nil {
+		t.Fatalf("non-ASCII base, 239 bytes: got %d bytes, err %v", len(fits), err)
+	}
+	got, err = sessionwire.HostLinkEndpoint(nonASCII, sessionwire.TenantID(strings.Repeat("a", 240)))
+	assertHostLinkEndpointRefusal(t, got, err, sessionwire.HostLinkEndpointCodeTooLong)
 }
 
-// hostV021Router is a VERBATIM copy of how host v0.2.1 routes a HostLink
-// request: Service.Routes() mounts the links handler on an http.ServeMux at
-// "/hostlink/" (host compose.go:482-483), and links.handler() takes the tenant
-// from request.URL.Path with tenantFromPath (internal/compose/links.go:246-252)
-// and validates it with Core's TenantID.Validate (links.go:96) before building
-// a transport. The goldens are the authority; this copy lets the fuzz target
-// ask the same router about arbitrary tenants. It answers 200 with the tenant
-// it resolved as the body.
+// hostV021Router is a ROUTING-EQUIVALENT REDUCTION, not a verbatim copy, of
+// how host v0.2.1 routes a HostLink request. Service.Routes() mounts the links
+// handler on an http.ServeMux at "/hostlink/" (host compose.go:482-483);
+// links.handler() takes the tenant from request.URL.Path with tenantFromPath
+// (internal/compose/links.go:246-252) and validates it with Core's
+// TenantID.Validate (links.go:96) before building a transport. Kept verbatim:
+// the mux mounting and tenantFromPath. Dropped: the sibling /metrics, /readyz
+// and /healthz routes, resolve's 503 answers (tenant limit, stopped Host), and
+// the hand-off to the Centrifuge transport; this answers 200 with the tenant it
+// resolved as the body instead. The prefix is inlined rather than read from
+// Host's constant. A 527k-exec differential fuzz against the real handler
+// found no divergence on /hostlink/ paths (CODEX_REVIEW_CORE_0C2F959_QUALITY).
+//
+// It is checked here only against goldens recorded from v0.2.1, so it cannot
+// notice a HOST routing change: that guard belongs in Host, which must test its
+// real Routes() against HostLinkEndpoint.
 func hostV021Router() http.Handler {
 	tenantFromPath := func(path string) (string, bool) {
 		rest, found := strings.CutPrefix(path, "/hostlink/")
@@ -441,57 +542,109 @@ func TestHostV021RouterCopyAgreesWithGoldens(t *testing.T) {
 	}
 }
 
+// bareBaseForOracle says whether base is one HostLinkEndpoint may build on:
+// it validates, and carries no path beyond one '/' and no '#'. It is the fuzz
+// oracle's own statement of the base rule.
+func bareBaseForOracle(base string) (host string, bare bool) {
+	if sessionwire.InternalEndpoint(base).Validate() != nil || strings.Contains(base, "#") {
+		return "", false
+	}
+	parsed, err := url.Parse(base)
+	if err != nil || (parsed.Path != "" && parsed.Path != "/") {
+		return "", false
+	}
+	return parsed.Host, true
+}
+
 // FuzzHostLinkEndpointRoutesToItsTenant is the derivation's property over
-// arbitrary tenants: an accepted endpoint validates, parses to exactly
-// "/hostlink/" + tenant on the base's authority, and routes through Host's
-// router to that same tenant; a tenant refused as unroutable is one that
-// router does not resolve. Together they make the unroutable refusal exact
-// rather than merely safe.
+// arbitrary bases and tenants. An accepted endpoint validates, fits in
+// MaxIDBytes BYTES, begins with the base (one trailing '/' dropped), parses to
+// exactly "/hostlink/" + tenant on the base's authority, and routes through
+// Host's router to that same tenant. Every refusal is justified by an oracle
+// that does not call HostLinkEndpoint, and in the documented order: a base
+// refusal only for a base that is not bare; invalid_tenant only for a bare
+// base and a tenant Core refuses; unroutable only for a valid tenant the router
+// does not resolve; too_long only for a valid tenant the router resolves whose
+// endpoint does not fit.
 func FuzzHostLinkEndpointRoutesToItsTenant(f *testing.F) {
 	goldens := hostLinkEndpointGoldensForFuzz(f)
+	bases := []string{
+		goldens.Base, "wss://x", "wss://x/", "ws://é", "ws://[::1]:7443", "WS://h",
+		"ws://h/hostlink/x", "ws://h/HOSTLINK/x", "ws://h#", "ws://h//", "", "http://h",
+	}
 	for _, row := range goldens.Rows {
 		raw, err := hex.DecodeString(row.TenantHex)
 		if err != nil {
 			f.Fatal(err)
 		}
-		f.Add(string(raw))
+		for _, base := range bases {
+			f.Add(base, string(raw))
+		}
 	}
+	f.Add("wss://x/", strings.Repeat("a", 239))
+	f.Add("ws://é", strings.Repeat("a", 240))
+	f.Add("ws://h", "\xff/")
+	f.Add("ws://h", strings.Repeat("/", 100))
 	router := hostV021Router()
-	const base = "ws://host.internal:7443"
-	f.Fuzz(func(t *testing.T, tenant string) {
-		got, err := sessionwire.HostLinkEndpoint(base, sessionwire.TenantID(tenant))
+	f.Fuzz(func(t *testing.T, base, tenant string) {
+		got, err := sessionwire.HostLinkEndpoint(sessionwire.InternalEndpoint(base), sessionwire.TenantID(tenant))
+		host, bare := bareBaseForOracle(base)
+		routes := func() bool {
+			code, resolved, routeErr := routeThroughHostV021(router, "ws://h/hostlink/"+url.PathEscape(tenant))
+			return routeErr == nil && code == http.StatusOK && resolved == tenant
+		}
+		length := len(strings.TrimSuffix(base, "/")) + len("/hostlink/") + len(url.PathEscape(tenant))
 		if err != nil {
 			var endpointErr *sessionwire.HostLinkEndpointError
 			if !errors.As(err, &endpointErr) {
 				t.Fatalf("untyped refusal %T: %v", err, err)
 			}
+			if got != "" {
+				t.Fatalf("refusal returned %q", got)
+			}
 			switch endpointErr.Code {
+			case sessionwire.HostLinkEndpointCodeInvalidBase:
+				if sessionwire.InternalEndpoint(base).Validate() == nil {
+					t.Fatalf("refused a valid base as invalid")
+				}
+			case sessionwire.HostLinkEndpointCodeBaseNamesTenant, sessionwire.HostLinkEndpointCodeBaseNotBare:
+				if bare || sessionwire.InternalEndpoint(base).Validate() != nil {
+					t.Fatalf("refused base with %s, but oracle bare=%v", endpointErr.Code, bare)
+				}
 			case sessionwire.HostLinkEndpointCodeInvalidTenant:
-				if sessionwire.TenantID(tenant).Validate() == nil {
-					t.Fatalf("refused a Core-valid tenant as invalid")
+				if !bare || sessionwire.TenantID(tenant).Validate() == nil {
+					t.Fatalf("invalid_tenant with bare=%v and a Core-valid tenant", bare)
 				}
 			case sessionwire.HostLinkEndpointCodeUnroutableTenant:
-				code, resolved, routeErr := routeThroughHostV021(router, base+"/hostlink/"+url.PathEscape(tenant))
-				if routeErr == nil && code == http.StatusOK && resolved == tenant {
-					t.Fatalf("refused as unroutable a tenant Host's router resolves")
+				if !bare || sessionwire.TenantID(tenant).Validate() != nil || routes() {
+					t.Fatalf("unroutable_tenant for a tenant that is invalid or that Host's router resolves")
 				}
 			case sessionwire.HostLinkEndpointCodeTooLong:
-				if len(base)+len("/hostlink/")+len(url.PathEscape(tenant)) <= sessionwire.MaxIDBytes {
-					t.Fatalf("refused as too long an endpoint that fits")
+				if !bare || sessionwire.TenantID(tenant).Validate() != nil || !routes() || length <= sessionwire.MaxIDBytes {
+					t.Fatalf("too_long for %d bytes (bare=%v)", length, bare)
 				}
 			default:
-				t.Fatalf("unexpected reason %q", endpointErr.Code)
+				t.Fatalf("unexpected code %q", endpointErr.Code)
 			}
 			return
 		}
+		if !bare {
+			t.Fatalf("accepted a base the oracle refuses")
+		}
+		if len(got) > sessionwire.MaxIDBytes {
+			t.Fatalf("derived endpoint is %d bytes", len(got))
+		}
 		if err := got.Validate(); err != nil {
 			t.Fatalf("derived endpoint fails Validate: %v", err)
+		}
+		if !strings.HasPrefix(string(got), strings.TrimSuffix(base, "/")+"/hostlink/") {
+			t.Fatalf("derived endpoint %q does not extend the base", got)
 		}
 		parsed, err := url.Parse(string(got))
 		if err != nil {
 			t.Fatalf("derived endpoint does not parse: %v", err)
 		}
-		if parsed.Host != "host.internal:7443" || parsed.Path != "/hostlink/"+tenant {
+		if parsed.Host != host || parsed.Path != "/hostlink/"+tenant {
 			t.Fatalf("derived endpoint parses to host %q path %q", parsed.Host, parsed.Path)
 		}
 		code, resolved, err := routeThroughHostV021(router, string(got))
