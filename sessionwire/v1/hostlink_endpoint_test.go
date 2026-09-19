@@ -199,6 +199,10 @@ func TestHostLinkEndpointBase(t *testing.T) {
 		{"hostlink tenant with trailing slash", "ws://host.internal:7443/hostlink/tenant-a/", sessionwire.HostLinkEndpointReasonBaseNamesTenant},
 		{"escaped hostlink segment", "ws://host.internal:7443/%68ostlink/tenant-a", sessionwire.HostLinkEndpointReasonBaseNamesTenant},
 		{"other path", "ws://host.internal:7443/prefix", sessionwire.HostLinkEndpointReasonBaseNotBare},
+		// A segment that merely begins with "hostlink" is some other path, not
+		// a tenant's link: the prefix is matched with its trailing '/'.
+		{"segment beginning hostlink", "ws://host.internal:7443/hostlinks", sessionwire.HostLinkEndpointReasonBaseNotBare},
+		{"segment beginning hostlink with child", "ws://host.internal:7443/hostlinkx/tenant-a", sessionwire.HostLinkEndpointReasonBaseNotBare},
 		{"path under a prefix", "ws://host.internal:7443/prefix/hostlink/tenant-a", sessionwire.HostLinkEndpointReasonBaseNotBare},
 		{"two trailing slashes", "ws://host.internal:7443//", sessionwire.HostLinkEndpointReasonBaseNotBare},
 		{"empty fragment marker", "ws://host.internal:7443#", sessionwire.HostLinkEndpointReasonBaseNotBare},
