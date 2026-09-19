@@ -442,6 +442,7 @@ func TestHostLinkFramingConstantsMatchHost(t *testing.T) {
 		{"attach", sessionwire.HostLinkMethodAttach, "hostlink.attach"},
 		{"drain", sessionwire.HostLinkMethodDrain, "hostlink.drain"},
 		{"drain status", sessionwire.HostLinkMethodDrainStatus, "hostlink.drain_status"},
+		{"capability gate_response", sessionwire.HostLinkCapabilityGateResponse, "hostlink.command.gate_response"},
 	}
 	for _, tt := range tests {
 		if tt.got != tt.want {
@@ -449,13 +450,49 @@ func TestHostLinkFramingConstantsMatchHost(t *testing.T) {
 		}
 	}
 	// Host tells a reserved method from a channel by exact match, so no method
-	// may be spelled as a channel.
+	// (and no capability token) may be spelled as a channel.
 	for _, method := range []string{
 		sessionwire.HostLinkMethodBind, sessionwire.HostLinkMethodUnbind, sessionwire.HostLinkMethodAttach,
 		sessionwire.HostLinkMethodDrain, sessionwire.HostLinkMethodDrainStatus,
+		sessionwire.HostLinkCapabilityGateResponse,
 	} {
 		if strings.HasPrefix(method, sessionwire.HostLinkChannelPrefix) {
 			t.Errorf("method %q begins with the channel prefix", method)
 		}
+	}
+	// A capability token is not an RPC method: it must equal none of the
+	// reserved method names, in either direction.
+	for _, method := range []string{
+		sessionwire.HostLinkMethodBind, sessionwire.HostLinkMethodUnbind, sessionwire.HostLinkMethodAttach,
+		sessionwire.HostLinkMethodDrain, sessionwire.HostLinkMethodDrainStatus,
+	} {
+		if sessionwire.HostLinkCapabilityGateResponse == method {
+			t.Errorf("HostLinkCapabilityGateResponse equals reserved method %q", method)
+		}
+	}
+}
+
+// TestHostLinkCapabilityGateResponseIsReadOnlyThroughSupports pins that the
+// gate_response capability token is discovered the same way a method is —
+// via Supports/HostLinkMethods on a connect reply — and only when a Host
+// actually advertised it alongside its reserved methods.
+func TestHostLinkCapabilityGateResponseIsReadOnlyThroughSupports(t *testing.T) {
+	t.Parallel()
+
+	methods := []string{
+		sessionwire.HostLinkMethodBind, sessionwire.HostLinkMethodUnbind, sessionwire.HostLinkMethodAttach,
+		sessionwire.HostLinkMethodDrain, sessionwire.HostLinkMethodDrainStatus,
+	}
+
+	withCapability := sessionwire.VersionNegotiationResponse{Version: sessionwire.CurrentWireVersion}.
+		WithHostLinkMethods(append(append([]string(nil), methods...), sessionwire.HostLinkCapabilityGateResponse)...)
+	if !withCapability.Supports(sessionwire.HostLinkCapabilityGateResponse) {
+		t.Errorf("Supports(gate_response capability) = false on a reply that advertised it; got %v", withCapability.HostLinkMethods())
+	}
+
+	withoutCapability := sessionwire.VersionNegotiationResponse{Version: sessionwire.CurrentWireVersion}.
+		WithHostLinkMethods(methods...)
+	if withoutCapability.Supports(sessionwire.HostLinkCapabilityGateResponse) {
+		t.Errorf("Supports(gate_response capability) = true on a reply that advertised only the reserved methods; got %v", withoutCapability.HostLinkMethods())
 	}
 }

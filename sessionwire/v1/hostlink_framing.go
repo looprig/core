@@ -58,6 +58,32 @@ import (
 // HostLinkCommandDelivery. Any method that is not reserved is resolved as a
 // channel against the routes the link holds, so a delivery names its binding
 // by the method alone.
+//
+// # Capability tokens
+//
+// hostlink_methods (see VersionNegotiationResponse) carries two different
+// kinds of string: reserved RPC method names, above, AND capability tokens
+// such as HostLinkCapabilityGateResponse. A token is never dispatched — it
+// names no method and is never sent as one, and a token routed as an RPC
+// falls to the same channel arm any other unrecognised name would. It is
+// read only with Supports/HostLinkMethods, to answer a question a method name
+// alone cannot: "can this peer do X", independent of any single request.
+//
+//   - hostlink.command.<kind> means the Host applies runtime command kind
+//     <kind> (a runtimecommand.Kind) through the disposition path. The
+//     v0.1.0 baseline kinds — input, interrupt and restore — are not
+//     advertised: every shipped Host already applies them, so the token
+//     would add a check with no Host it could ever be false against.
+//   - hostlink.<area>.<feature> is for a capability that is not a command
+//     kind. It is added only when a Factory actually branches on it —
+//     advertising a feature nothing reads is dead signalling.
+//
+// Every token a Factory gates on must be named as a Core constant before
+// either end ships it, the same discipline as a reserved method: a token
+// invented ad hoc by one side cannot be relied on by the other. A token must
+// equal none of the HostLinkMethod* constants and must not begin with
+// HostLinkChannelPrefix ("hostlink.v1."), so it can never be mistaken for a
+// method or a channel.
 const (
 	// HostLinkMethodBind carries a HostLinkBindRequest.
 	HostLinkMethodBind = "hostlink.bind"
@@ -70,6 +96,13 @@ const (
 	// HostLinkMethodDrainStatus observes a drain without initiating one.
 	HostLinkMethodDrainStatus = "hostlink.drain_status"
 )
+
+// HostLinkCapabilityGateResponse is advertised in hostlink_methods by a Host
+// that applies the gate_response runtime command through the disposition path
+// (host >= v0.4.0, harness >= v0.35.0). It is a capability token, not an RPC
+// method: nothing dispatches on it, and a Factory must not admit a
+// gate_response for a Host whose reply does not Support it.
+const HostLinkCapabilityGateResponse = "hostlink.command.gate_response"
 
 // HostLinkChannelPrefix is the leading segment of every HostLink session
 // channel.

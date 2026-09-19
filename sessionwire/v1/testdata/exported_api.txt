@@ -27,6 +27,7 @@ const HostIsolationClassCrossTenantIsolated HostIsolationClass = "cross_tenant_i
 const HostIsolationClassTenantExclusive HostIsolationClass = "tenant_exclusive"
 const HostLinkAttachModeCreate HostLinkAttachMode = "create"
 const HostLinkAttachModeRestore HostLinkAttachMode = "restore"
+const HostLinkCapabilityGateResponse = "hostlink.command.gate_response"
 const HostLinkChannelPrefix = "hostlink.v1."
 const HostLinkDrainStateDrained HostLinkDrainState = "drained"
 const HostLinkDrainStateDraining HostLinkDrainState = "draining"

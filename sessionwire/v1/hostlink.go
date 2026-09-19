@@ -1207,10 +1207,15 @@ func (r *VersionNegotiationRequest) UnmarshalJSON(data []byte) error {
 //
 // It also carries the optional hostlink_methods member: the set of reserved
 // HostLink methods the replying Host serves, by name (the HostLinkMethod*
-// constants). It is the capability signal a Factory gates on. A Host that
-// predates it answers without the member, which decodes as an empty set, and
-// a Factory must then not send a method it cannot see advertised — a v0.1.0
-// Host routes hostlink.attach as a channel and answers runtime_unavailable,
+// constants), PLUS any capability tokens it advertises (see "Capability
+// tokens" in hostlink_framing.go, e.g. HostLinkCapabilityGateResponse). A
+// token is never dispatched as an RPC — it is read only with Supports or
+// HostLinkMethods to answer "can this peer do X" — while a method name is
+// both dispatched and readable the same way. It is the capability signal a
+// Factory gates on. A Host that predates it answers without the member,
+// which decodes as an empty set, and a Factory must then not send a method
+// or admit a command it cannot see advertised — a v0.1.0 Host routes
+// hostlink.attach as a channel and answers runtime_unavailable,
 // indistinguishable from a genuine refusal. Read it with Supports or
 // HostLinkMethods; a Host sets it with WithHostLinkMethods after
 // NegotiateVersion.
