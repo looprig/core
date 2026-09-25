@@ -27,6 +27,7 @@ const HostIsolationClassCrossTenantIsolated HostIsolationClass = "cross_tenant_i
 const HostIsolationClassTenantExclusive HostIsolationClass = "tenant_exclusive"
 const HostLinkAttachModeCreate HostLinkAttachMode = "create"
 const HostLinkAttachModeRestore HostLinkAttachMode = "restore"
+const HostLinkCapabilityAttributionPrincipal = "hostlink.attribution.principal"
 const HostLinkCapabilityGateResponse = "hostlink.command.gate_response"
 const HostLinkChannelPrefix = "hostlink.v1."
 const HostLinkDrainStateDrained HostLinkDrainState = "drained"
@@ -55,6 +56,18 @@ const IDValidationCodeEmpty IDValidationCode = "empty"
 const IDValidationCodeInvalidUTF8 IDValidationCode = "invalid_utf8"
 const IDValidationCodeTooLong IDValidationCode = "too_long"
 const MaxIDBytes = 256
+const MaxMetadataBytes = 4096
+const MaxMetadataFields = 16
+const MaxMetadataKeyBytes = 64
+const MaxMetadataValueBytes = 1024
+const MetadataValidationCodeInvalidKey MetadataValidationCode = "invalid_key"
+const MetadataValidationCodeInvalidValue MetadataValidationCode = "invalid_value"
+const MetadataValidationCodeReservedKey MetadataValidationCode = "reserved_key"
+const MetadataValidationCodeTooLarge MetadataValidationCode = "too_large"
+const MetadataValidationCodeTooManyFields MetadataValidationCode = "too_many_fields"
+const MetadataValidationCodeValueTooLarge MetadataValidationCode = "value_too_large"
+const PrincipalKindActor PrincipalKind = "actor"
+const PrincipalKindService PrincipalKind = "service"
 const RequestValidationCodeDuplicateField RequestValidationCode = "duplicate_field"
 const RequestValidationCodeInvalidField RequestValidationCode = "invalid_field"
 const RequestValidationCodeInvalidJSON RequestValidationCode = "invalid_json"
@@ -90,6 +103,8 @@ field CommandStatus.State CommandState `json:"status"`
 field CreateRequest.AgentID AgentID `json:"agent_id"`
 field CreateRequest.Blocks json.RawMessage `json:"blocks,omitempty"`
 field CreateRequest.CommandEnvelope CommandEnvelope
+field CreateRequest.Metadata MessageMetadata `json:"metadata,omitempty"`
+field CreateRequest.Principal *Principal `json:"principal,omitempty"`
 field CreateRequest.SessionID SessionID `json:"session_id"`
 field DepartmentCapabilitySummary.Agents []AgentCapabilitySummary `json:"agents"`
 field EnduringPublication.Body json.RawMessage `json:"body"`
@@ -138,6 +153,7 @@ field GateResponseRequest.CommandEnvelope CommandEnvelope
 field GateResponseRequest.ExpectedOpenEventID EventID `json:"expected_open_event_id,omitempty"`
 field GateResponseRequest.ExpectedOpenJournalSeq uint64 `json:"expected_open_journal_seq,omitempty"`
 field GateResponseRequest.GateID GateID `json:"gate_id"`
+field GateResponseRequest.Principal *Principal `json:"principal,omitempty"`
 field GateResponseRequest.SessionID SessionID `json:"session_id"`
 field GateResponseRequest.Values map[string]json.RawMessage `json:"values"`
 field HostLinkAttachRequest.ActorID string `json:"actor_id"`
@@ -213,8 +229,11 @@ field HostLinkUnbindRequest.Version WireVersion `json:"version"`
 field IDValidationError.Code IDValidationCode
 field InputRequest.Blocks json.RawMessage `json:"blocks"`
 field InputRequest.CommandEnvelope CommandEnvelope
+field InputRequest.Metadata MessageMetadata `json:"metadata,omitempty"`
+field InputRequest.Principal *Principal `json:"principal,omitempty"`
 field InputRequest.SessionID SessionID `json:"session_id"`
 field InterruptRequest.CommandEnvelope CommandEnvelope
+field InterruptRequest.Principal *Principal `json:"principal,omitempty"`
 field InterruptRequest.SessionID SessionID `json:"session_id"`
 field JournalEvent.Body json.RawMessage `json:"body"`
 field JournalEvent.EventID EventID `json:"event_id"`
@@ -227,15 +246,21 @@ field JournalPage.PreviousCursor Cursor `json:"previous_cursor,omitempty"`
 field JournalTip.SessionID SessionID `json:"session_id"`
 field JournalTip.TenantID TenantID `json:"tenant_id"`
 field JournalTip.Tip uint64 `json:"journal_tip"`
+field MetadataValidationError.Code MetadataValidationCode
+field MetadataValidationError.Key string
 field ObjectMetadata.CreatedAt time.Time `json:"created_at,omitzero"`
 field ObjectMetadata.Digest string `json:"digest,omitempty"`
 field ObjectMetadata.MediaType string `json:"media_type,omitempty"`
 field ObjectMetadata.Reference ObjectReference `json:"reference"`
 field ObjectMetadata.SizeBytes uint64 `json:"size_bytes"`
 field ObjectReference.ObjectID string `json:"object_id"`
+field Principal.Kind PrincipalKind `json:"kind"`
+field Principal.Subject SubjectID `json:"subject"`
+field Principal.Tenant TenantID `json:"tenant"`
 field RequestValidationError.Code RequestValidationCode
 field RequestValidationError.Field string
 field RestoreRequest.CommandEnvelope CommandEnvelope
+field RestoreRequest.Principal *Principal `json:"principal,omitempty"`
 field RestoreRequest.SessionID SessionID `json:"session_id"`
 field SessionPage.NextCursor Cursor `json:"next_cursor,omitempty"`
 field SessionPage.PreviousCursor Cursor `json:"previous_cursor,omitempty"`
@@ -304,8 +329,11 @@ method (*InterruptRequest) UnmarshalJSON(data []byte) error
 method (*JournalEvent) UnmarshalJSON(data []byte) error
 method (*JournalPage) UnmarshalJSON(data []byte) error
 method (*JournalTip) UnmarshalJSON(data []byte) error
+method (*MetadataValidationError) Error() string
+method (*MetadataValidationError) Unwrap() error
 method (*ObjectMetadata) UnmarshalJSON(data []byte) error
 method (*ObjectReference) UnmarshalJSON(data []byte) error
+method (*Principal) UnmarshalJSON(data []byte) error
 method (*RequestValidationError) Error() string
 method (*RestoreRequest) UnmarshalJSON(data []byte) error
 method (*SessionPage) UnmarshalJSON(data []byte) error
@@ -395,8 +423,11 @@ method (JournalTip) AdditionalFields() map[string]json.RawMessage
 method (JournalTip) MarshalJSON() ([]byte, error)
 method (JournalTip) RecordType() SessionRecordType
 method (JournalTip) Validate() error
+method (MessageMetadata) Validate() error
 method (ObjectMetadata) Validate() error
 method (ObjectReference) Validate() error
+method (Principal) MarshalJSON() ([]byte, error)
+method (Principal) Validate() error
 method (RestoreRequest) Validate() error
 method (SessionID) Validate() error
 method (SessionPage) AdditionalFields() map[string]json.RawMessage
@@ -412,6 +443,7 @@ method (SessionStatus) Validate() error
 method (SessionSummary) AdditionalFields() map[string]json.RawMessage
 method (SessionSummary) MarshalJSON() ([]byte, error)
 method (SessionSummary) Validate() error
+method (SubjectID) Validate() error
 method (TenantID) Validate() error
 method (VersionNegotiationRequest) MarshalJSON() ([]byte, error)
 method (VersionNegotiationRequest) Validate() error
@@ -474,8 +506,13 @@ type InterruptRequest struct
 type JournalEvent struct
 type JournalPage struct
 type JournalTip struct
+type MessageMetadata map[string]string
+type MetadataValidationCode string
+type MetadataValidationError struct
 type ObjectMetadata struct
 type ObjectReference struct
+type Principal struct
+type PrincipalKind string
 type RequestValidationCode string
 type RequestValidationError struct
 type RestoreRequest struct
@@ -487,6 +524,7 @@ type SessionResidency string
 type SessionState string
 type SessionStatus struct
 type SessionSummary struct
+type SubjectID string
 type TenantID string
 type VersionNegotiationRequest struct
 type VersionNegotiationResponse struct
