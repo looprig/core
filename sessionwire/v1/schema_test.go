@@ -100,6 +100,14 @@ func TestV1FixturesMatchSchemaShapeAndExtensionPolicy(t *testing.T) {
 	t.Parallel()
 
 	strict := map[string]bool{
+		"principal":                       true,
+		"create_request_principal":        true,
+		"create_request_metadata":         true,
+		"input_request_principal":         true,
+		"input_request_metadata":          true,
+		"interrupt_request_principal":     true,
+		"restore_request_principal":       true,
+		"gate_response_request_principal": true,
 		"create_request":                  true,
 		"input_request":                   true,
 		"interrupt_request":               true,
