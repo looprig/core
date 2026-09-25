@@ -86,16 +86,29 @@ HostLink specifics a Factory or Host implementer needs:
   (prefix `HostLinkChannelPrefix`).
 - **Capabilities.** A Host lists the methods and capability tokens it supports
   in the negotiation reply's `hostlink_methods`; check them with
-  `VersionNegotiationResponse.Supports`. `HostLinkCapabilityGateResponse`
-  (`hostlink.command.gate_response`) is a capability token, not a method: a
-  Factory must not send a gate response to a Host whose reply does not support
-  it, and must not send `hostlink.attach` to a Host that does not advertise it.
+  `VersionNegotiationResponse.Supports`. Capability tokens are not methods:
+  `HostLinkCapabilityGateResponse` (`hostlink.command.gate_response`) gates
+  gate responses, and `HostLinkCapabilityAttributionPrincipal`
+  (`hostlink.attribution.principal`) gates any command carrying `principal` or
+  `metadata`. A Factory must not send a command a Host's reply does not
+  support, and must not send `hostlink.attach` to a Host that does not
+  advertise it.
 - **Addressing.** A Host advertises a bare base endpoint (`ws`/`wss` scheme and
   authority, no path). Each tenant's HostLink address is derived with
   `HostLinkEndpoint(base, tenant)` (`base` + `HostLinkPathPrefix` + escaped
   tenant); refusals are a typed `HostLinkEndpointError`. A Host behind a
   path-prefixed ingress must use host-based routing, a port per Host, or
   in-cluster Service DNS instead.
+- **Command principal and metadata.** Every command request may carry an
+  optional `principal` (`Principal{Tenant, Subject, Kind}`, kind `actor` or
+  `service`): the verified sender, stamped only by a Factory, never by a
+  client. `create` and `input` may also carry optional `metadata`
+  (`MessageMetadata`, string values only): at most 16 fields; keys
+  `^[a-z][a-z0-9_]{0,63}$`, never beginning `looprig`; values at most
+  1024 bytes; 4096 bytes encoded. Failures are a typed
+  `MetadataValidationError` that also unwraps to `RequestValidationError`
+  (`invalid_field`, `metadata`). When both are absent a request is
+  byte-identical to earlier releases.
 - **Command IDs.** `DeterministicCommandID(domain, fields...)` derives a
   retry-stable command ID from framed fields.
 
