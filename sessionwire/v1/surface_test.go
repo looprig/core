@@ -17,6 +17,7 @@ var (
 	_ = sessionwire.CommandID("command-1")
 	_ = sessionwire.EventID("event-1")
 	_ = sessionwire.GateID("gate-1")
+	_ = sessionwire.SubjectID("subject-1")
 
 	_ sessionwire.WireVersion = sessionwire.CurrentWireVersion
 	_                         = sessionwire.WireVersion(1)

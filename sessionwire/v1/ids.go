@@ -29,6 +29,10 @@ type EventID string
 // GateID identifies a gate awaiting a response.
 type GateID string
 
+// SubjectID identifies the verified user or service account a Factory
+// established for a command. It is opaque and never a display name.
+type SubjectID string
+
 // IDValidationCode is a stable machine-readable reason an identity is invalid.
 type IDValidationCode string
 
@@ -82,6 +86,9 @@ func (id EventID) Validate() error { return validateID(string(id)) }
 
 // Validate reports whether id is a permitted opaque gate identity.
 func (id GateID) Validate() error { return validateID(string(id)) }
+
+// Validate reports whether id is a permitted opaque subject identity.
+func (id SubjectID) Validate() error { return validateID(string(id)) }
 
 func validateID(value string) error {
 	switch {

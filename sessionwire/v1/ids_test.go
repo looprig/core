@@ -22,10 +22,36 @@ func TestIdentityIDsAcceptBoundedUTF8(t *testing.T) {
 		sessionwire.CommandID(strings.Repeat("x", sessionwire.MaxIDBytes)),
 		sessionwire.EventID("event-1"),
 		sessionwire.GateID("gate-1"),
+		sessionwire.SubjectID("user_01H8Z"),
 	} {
 		if err := id.Validate(); err != nil {
 			t.Errorf("Validate() = %v, want nil", err)
 		}
+	}
+}
+
+func TestSubjectIDUsesGenericIdentityRules(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		id   sessionwire.SubjectID
+		want sessionwire.IDValidationCode
+	}{
+		{"empty", "", sessionwire.IDValidationCodeEmpty},
+		{"too long", sessionwire.SubjectID(strings.Repeat("s", sessionwire.MaxIDBytes+1)), sessionwire.IDValidationCodeTooLong},
+		{"invalid UTF-8", sessionwire.SubjectID(string([]byte{0xff})), sessionwire.IDValidationCodeInvalidUTF8},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			var validationErr *sessionwire.IDValidationError
+			if err := tt.id.Validate(); !errors.As(err, &validationErr) || validationErr.Code != tt.want {
+				t.Fatalf("Validate() = %v, want *IDValidationError{%q}", err, tt.want)
+			}
+		})
+	}
+	if err := sessionwire.SubjectID(strings.Repeat("s", sessionwire.MaxIDBytes)).Validate(); err != nil {
+		t.Errorf("Validate(256 bytes) = %v, want nil", err)
 	}
 }
 
