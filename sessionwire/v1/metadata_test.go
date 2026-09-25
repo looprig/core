@@ -95,7 +95,10 @@ func TestMetadataValidationErrorNeverEchoesKeyOrValue(t *testing.T) {
 		}
 	}
 	var metadataErr *sessionwire.MetadataValidationError
-	if !errors.As(sessionwire.MessageMetadata{"AKIAEXAMPLE": "v"}.Validate(), &metadataErr) || metadataErr.Key != "" {
+	if err := (sessionwire.MessageMetadata{"AKIAEXAMPLE": "v"}).Validate(); !errors.As(err, &metadataErr) {
+		t.Fatalf("Validate() = %v, want *MetadataValidationError", err)
+	}
+	if metadataErr.Key != "" {
 		t.Errorf("invalid_key reported Key %q", metadataErr.Key)
 	}
 }
