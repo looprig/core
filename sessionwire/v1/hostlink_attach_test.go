@@ -443,6 +443,7 @@ func TestHostLinkFramingConstantsMatchHost(t *testing.T) {
 		{"drain", sessionwire.HostLinkMethodDrain, "hostlink.drain"},
 		{"drain status", sessionwire.HostLinkMethodDrainStatus, "hostlink.drain_status"},
 		{"capability gate_response", sessionwire.HostLinkCapabilityGateResponse, "hostlink.command.gate_response"},
+		{"capability command principal", sessionwire.HostLinkCapabilityAttributionPrincipal, "hostlink.attribution.principal"},
 	}
 	for _, tt := range tests {
 		if tt.got != tt.want {
@@ -455,6 +456,7 @@ func TestHostLinkFramingConstantsMatchHost(t *testing.T) {
 		sessionwire.HostLinkMethodBind, sessionwire.HostLinkMethodUnbind, sessionwire.HostLinkMethodAttach,
 		sessionwire.HostLinkMethodDrain, sessionwire.HostLinkMethodDrainStatus,
 		sessionwire.HostLinkCapabilityGateResponse,
+		sessionwire.HostLinkCapabilityAttributionPrincipal,
 	} {
 		if strings.HasPrefix(method, sessionwire.HostLinkChannelPrefix) {
 			t.Errorf("method %q begins with the channel prefix", method)
@@ -466,9 +468,30 @@ func TestHostLinkFramingConstantsMatchHost(t *testing.T) {
 		sessionwire.HostLinkMethodBind, sessionwire.HostLinkMethodUnbind, sessionwire.HostLinkMethodAttach,
 		sessionwire.HostLinkMethodDrain, sessionwire.HostLinkMethodDrainStatus,
 	} {
-		if sessionwire.HostLinkCapabilityGateResponse == method {
-			t.Errorf("HostLinkCapabilityGateResponse equals reserved method %q", method)
+		for _, token := range []string{sessionwire.HostLinkCapabilityGateResponse, sessionwire.HostLinkCapabilityAttributionPrincipal} {
+			if token == method {
+				t.Errorf("capability token %q equals reserved method %q", token, method)
+			}
 		}
+	}
+	if sessionwire.HostLinkCapabilityAttributionPrincipal == sessionwire.HostLinkCapabilityGateResponse {
+		t.Error("the principal and gate_response capability tokens must be distinct")
+	}
+}
+
+func TestHostLinkCapabilityAttributionPrincipalIsReadOnlyThroughSupports(t *testing.T) {
+	t.Parallel()
+	base := sessionwire.VersionNegotiationResponse{Version: sessionwire.CurrentWireVersion}
+	with := base.WithHostLinkMethods(sessionwire.HostLinkMethodAttach, sessionwire.HostLinkCapabilityAttributionPrincipal)
+	if !with.Supports(sessionwire.HostLinkCapabilityAttributionPrincipal) {
+		t.Errorf("Supports(principal) = false; got %v", with.HostLinkMethods())
+	}
+	if with.Supports(sessionwire.HostLinkCapabilityGateResponse) {
+		t.Error("advertising principal must not imply gate_response")
+	}
+	gateOnly := base.WithHostLinkMethods(sessionwire.HostLinkMethodAttach, sessionwire.HostLinkCapabilityGateResponse)
+	if gateOnly.Supports(sessionwire.HostLinkCapabilityAttributionPrincipal) {
+		t.Error("a gate_response-only Host must not Support principal")
 	}
 }
 

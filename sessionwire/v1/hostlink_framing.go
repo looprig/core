@@ -77,6 +77,8 @@ import (
 //   - hostlink.<area>.<feature> is for a capability that is not a command
 //     kind. It is added only when a Factory actually branches on it —
 //     advertising a feature nothing reads is dead signalling.
+//     HostLinkCapabilityAttributionPrincipal ("hostlink.attribution.principal")
+//     is such a feature, in the attribution area.
 //
 // Every token a Factory gates on must be named as a Core constant before
 // either end ships it, the same discipline as a reserved method: a token
@@ -103,6 +105,13 @@ const (
 // method: nothing dispatches on it, and a Factory must not admit a
 // gate_response for a Host whose reply does not Support it.
 const HostLinkCapabilityGateResponse = "hostlink.command.gate_response"
+
+// HostLinkCapabilityAttributionPrincipal is advertised by a Host that reads
+// principal on all five command kinds and metadata on create and input. One
+// token covers both fields because they ship in one Host release. A Factory
+// must gate commands carrying either member on the owner's Supports result;
+// it must never infer the capability from a Host version or lease epoch.
+const HostLinkCapabilityAttributionPrincipal = "hostlink.attribution.principal"
 
 // HostLinkChannelPrefix is the leading segment of every HostLink session
 // channel.
