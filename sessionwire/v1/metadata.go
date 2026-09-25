@@ -130,6 +130,9 @@ func decodeOptionalMetadata(fields map[string]json.RawMessage) (MessageMetadata,
 	}
 	metadata := make(MessageMetadata, len(members))
 	for _, key := range slices.Sorted(maps.Keys(members)) {
+		if isJSONNull(members[key]) {
+			return nil, &MetadataValidationError{Code: MetadataValidationCodeInvalidValue, Key: reportableMetadataKey(key)}
+		}
 		value, err := decodeStrictJSONString(members[key])
 		if err != nil {
 			return nil, &MetadataValidationError{Code: MetadataValidationCodeInvalidValue, Key: reportableMetadataKey(key)}

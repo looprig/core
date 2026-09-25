@@ -121,6 +121,28 @@ func TestMessageMembersAreRefusedWhenMalformed(t *testing.T) {
 	}
 }
 
+func TestMetadataNullValueIsRejectedByCreateAndInput(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, body string
+		decode     func(string) error
+	}{
+		{"create", `{"version":1,"command_id":"c","session_id":"s","agent_id":"a","metadata":{"a":null}}`, func(body string) error { _, err := decodeInto[sessionwire.CreateRequest](body); return err }},
+		{"input", `{"version":1,"command_id":"c","session_id":"s","blocks":[{"type":"text","text":"x"}],"metadata":{"a":null}}`, func(body string) error { _, err := decodeInto[sessionwire.InputRequest](body); return err }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := tt.decode(tt.body)
+			assertValidationError(t, err, sessionwire.RequestValidationCodeInvalidField, "metadata")
+			var metadataErr *sessionwire.MetadataValidationError
+			if !errors.As(err, &metadataErr) || metadataErr.Code != sessionwire.MetadataValidationCodeInvalidValue || metadataErr.Key != "a" {
+				t.Fatalf("decode = %v, want invalid_value for key a", err)
+			}
+		})
+	}
+}
+
 func seventeenFields() string {
 	parts := make([]string, 0, 17)
 	for _, key := range []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q"} {

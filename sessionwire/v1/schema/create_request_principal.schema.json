@@ -20,6 +20,7 @@
     "metadata": {
       "type": "object",
       "description": "Client-supplied app-defined string fields. Core also enforces: 1 to 16 fields; keys match ^[a-z][a-z0-9_]{0,63}$ and do not begin with looprig; values are at most 1024 bytes of UTF-8 with no C0 control other than tab and newline; the canonical encoding of the object is at most 4096 bytes.",
+      "not": {"const": {}},
       "additionalProperties": {"type": "string"}
     },
     "principal": {

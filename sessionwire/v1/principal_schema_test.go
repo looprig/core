@@ -11,7 +11,10 @@ import (
 func TestV1PrincipalAndMetadataSchemasAgreeWithDecoders(t *testing.T) {
 	t.Parallel()
 	const inputHead = `{"version":1,"command_id":"c","session_id":"s","blocks":[{"type":"text","text":"x"}]`
+	const createHead = `{"version":1,"command_id":"c","session_id":"s","agent_id":"a"`
+	const principal = `{"tenant":"t","subject":"u","kind":"actor"}`
 	input := func(body string) error { var r sessionwire.InputRequest; return json.Unmarshal([]byte(body), &r) }
+	create := func(body string) error { var r sessionwire.CreateRequest; return json.Unmarshal([]byte(body), &r) }
 	interrupt := func(body string) error { var r sessionwire.InterruptRequest; return json.Unmarshal([]byte(body), &r) }
 	tests := []struct {
 		name, stem, body string
@@ -22,7 +25,15 @@ func TestV1PrincipalAndMetadataSchemasAgreeWithDecoders(t *testing.T) {
 		{"principal missing subject", "input_request_principal", inputHead + `,"principal":{"tenant":"t","kind":"actor"}}`, input},
 		{"principal null", "input_request_principal", inputHead + `,"principal":null}`, input},
 		{"metadata non-string value", "input_request_metadata", inputHead + `,"metadata":{"space":1}}`, input},
+		{"metadata null value on input", "input_request_metadata", inputHead + `,"metadata":{"a":null}}`, input},
+		{"metadata null value on create", "create_request_metadata", `{"version":1,"command_id":"c","session_id":"s","agent_id":"a","metadata":{"a":null}}`, create},
 		{"metadata null", "input_request_metadata", inputHead + `,"metadata":null}`, input},
+		{"empty metadata on base create", "create_request", createHead + `,"metadata":{}}`, create},
+		{"empty metadata on metadata create", "create_request_metadata", createHead + `,"metadata":{}}`, create},
+		{"empty metadata on principal create", "create_request_principal", createHead + `,"metadata":{},"principal":` + principal + `}`, create},
+		{"empty metadata on base input", "input_request", inputHead + `,"metadata":{}}`, input},
+		{"empty metadata on metadata input", "input_request_metadata", inputHead + `,"metadata":{}}`, input},
+		{"empty metadata on principal input", "input_request_principal", inputHead + `,"metadata":{},"principal":` + principal + `}`, input},
 		{"metadata on interrupt", "interrupt_request_principal", `{"version":1,"command_id":"c","session_id":"s","metadata":{"a":"b"},"principal":{"tenant":"t","subject":"u","kind":"actor"}}`, interrupt},
 	}
 	for _, tt := range tests {
