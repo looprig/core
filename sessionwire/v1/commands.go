@@ -9,11 +9,11 @@ import (
 // Declared member lists. Each record names its members exactly once; the
 // marshaller, the decoder, and the extension capture all read the same slice.
 var (
-	createRequestMembers       = []string{"version", "command_id", "session_id", "agent_id", "blocks"}
-	inputRequestMembers        = []string{"version", "command_id", "session_id", "blocks"}
-	interruptRequestMembers    = []string{"version", "command_id", "session_id"}
-	restoreRequestMembers      = []string{"version", "command_id", "session_id"}
-	gateResponseRequestMembers = []string{"version", "command_id", "session_id", "gate_id", "action", "values", "expected_open_event_id", "expected_open_journal_seq"}
+	createRequestMembers       = []string{"version", "command_id", "session_id", "agent_id", "blocks", "metadata", "principal"}
+	inputRequestMembers        = []string{"version", "command_id", "session_id", "blocks", "metadata", "principal"}
+	interruptRequestMembers    = []string{"version", "command_id", "session_id", "principal"}
+	restoreRequestMembers      = []string{"version", "command_id", "session_id", "principal"}
+	gateResponseRequestMembers = []string{"version", "command_id", "session_id", "gate_id", "action", "values", "expected_open_event_id", "expected_open_journal_seq", "principal"}
 	commandStatusMembers       = []string{"command_id", "status", "accepted_order", "error"}
 )
 
@@ -40,11 +40,14 @@ func (e CommandEnvelope) Validate() error {
 // CreateRequest admits a new durable session. SessionID is supplied by the
 // client so a retry after an unknown outcome can reuse the same
 // (SessionID, CommandID) pair; it is intentionally not server-minted here.
+// Metadata is client-supplied; Principal is the optional Factory-stamped sender.
 type CreateRequest struct {
 	CommandEnvelope
 	SessionID SessionID       `json:"session_id"`
 	AgentID   AgentID         `json:"agent_id"`
 	Blocks    json.RawMessage `json:"blocks,omitempty"`
+	Metadata  MessageMetadata `json:"metadata,omitempty"`
+	Principal *Principal      `json:"principal,omitempty"`
 }
 
 // Validate reports whether the create request has the identities needed for
@@ -60,9 +63,14 @@ func (r CreateRequest) Validate() error {
 		return invalidRequest(RequestValidationCodeInvalidField, "agent_id")
 	}
 	if len(r.Blocks) != 0 {
-		return validateBlocks(r.Blocks, "blocks")
+		if err := validateBlocks(r.Blocks, "blocks"); err != nil {
+			return err
+		}
 	}
-	return nil
+	if err := r.Metadata.Validate(); err != nil {
+		return err
+	}
+	return validateOptionalPrincipal(r.Principal)
 }
 
 // UnmarshalJSON strictly decodes a create request. State-changing request
@@ -89,7 +97,15 @@ func (r *CreateRequest) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	decoded := CreateRequest{CommandEnvelope: envelope, SessionID: sessionID, AgentID: agentID, Blocks: blocks}
+	metadata, err := decodeOptionalMetadata(fields)
+	if err != nil {
+		return err
+	}
+	principal, err := decodeOptionalPrincipal(fields)
+	if err != nil {
+		return err
+	}
+	decoded := CreateRequest{CommandEnvelope: envelope, SessionID: sessionID, AgentID: agentID, Blocks: blocks, Metadata: metadata, Principal: principal}
 	if err := decoded.Validate(); err != nil {
 		return err
 	}
@@ -99,10 +115,13 @@ func (r *CreateRequest) UnmarshalJSON(data []byte) error {
 
 // InputRequest admits input blocks for an existing durable session. The blocks
 // retain their canonical JSON form so Core does not import Harness content types.
+// Metadata and Principal are as on CreateRequest.
 type InputRequest struct {
 	CommandEnvelope
 	SessionID SessionID       `json:"session_id"`
 	Blocks    json.RawMessage `json:"blocks"`
+	Metadata  MessageMetadata `json:"metadata,omitempty"`
+	Principal *Principal      `json:"principal,omitempty"`
 }
 
 // Validate reports whether the input request contains a client command identity,
@@ -114,7 +133,13 @@ func (r InputRequest) Validate() error {
 	if err := r.SessionID.Validate(); err != nil {
 		return invalidRequest(RequestValidationCodeInvalidField, "session_id")
 	}
-	return validateBlocks(r.Blocks, "blocks")
+	if err := validateBlocks(r.Blocks, "blocks"); err != nil {
+		return err
+	}
+	if err := r.Metadata.Validate(); err != nil {
+		return err
+	}
+	return validateOptionalPrincipal(r.Principal)
 }
 
 // UnmarshalJSON strictly decodes an input request.
@@ -135,7 +160,15 @@ func (r *InputRequest) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	decoded := InputRequest{CommandEnvelope: envelope, SessionID: sessionID, Blocks: blocks}
+	metadata, err := decodeOptionalMetadata(fields)
+	if err != nil {
+		return err
+	}
+	principal, err := decodeOptionalPrincipal(fields)
+	if err != nil {
+		return err
+	}
+	decoded := InputRequest{CommandEnvelope: envelope, SessionID: sessionID, Blocks: blocks, Metadata: metadata, Principal: principal}
 	if err := decoded.Validate(); err != nil {
 		return err
 	}
@@ -145,9 +178,11 @@ func (r *InputRequest) UnmarshalJSON(data []byte) error {
 
 // InterruptRequest asks the durable command plane to interrupt the target
 // session. Completion is observed through CommandStatus and public events.
+// Principal is the optional Factory-stamped sender; metadata is never carried.
 type InterruptRequest struct {
 	CommandEnvelope
-	SessionID SessionID `json:"session_id"`
+	SessionID SessionID  `json:"session_id"`
+	Principal *Principal `json:"principal,omitempty"`
 }
 
 // Validate reports whether the interrupt request is structurally admissible.
@@ -158,7 +193,7 @@ func (r InterruptRequest) Validate() error {
 	if err := r.SessionID.Validate(); err != nil {
 		return invalidRequest(RequestValidationCodeInvalidField, "session_id")
 	}
-	return nil
+	return validateOptionalPrincipal(r.Principal)
 }
 
 // UnmarshalJSON strictly decodes an interrupt request.
@@ -175,7 +210,11 @@ func (r *InterruptRequest) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	decoded := InterruptRequest{CommandEnvelope: envelope, SessionID: sessionID}
+	principal, err := decodeOptionalPrincipal(fields)
+	if err != nil {
+		return err
+	}
+	decoded := InterruptRequest{CommandEnvelope: envelope, SessionID: sessionID, Principal: principal}
 	if err := decoded.Validate(); err != nil {
 		return err
 	}
@@ -186,9 +225,11 @@ func (r *InterruptRequest) UnmarshalJSON(data []byte) error {
 // RestoreRequest is the explicit wire-compatibility request. New clients rely on
 // normal durable command admission and placement; this record keeps the staged
 // route explicit without making a read trigger restoration.
+// Principal is the optional Factory-stamped sender; metadata is never carried.
 type RestoreRequest struct {
 	CommandEnvelope
-	SessionID SessionID `json:"session_id"`
+	SessionID SessionID  `json:"session_id"`
+	Principal *Principal `json:"principal,omitempty"`
 }
 
 // Validate reports whether the compatibility restore request is structurally
@@ -200,7 +241,7 @@ func (r RestoreRequest) Validate() error {
 	if err := r.SessionID.Validate(); err != nil {
 		return invalidRequest(RequestValidationCodeInvalidField, "session_id")
 	}
-	return nil
+	return validateOptionalPrincipal(r.Principal)
 }
 
 // UnmarshalJSON strictly decodes a compatibility restore request.
@@ -217,7 +258,11 @@ func (r *RestoreRequest) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
-	decoded := RestoreRequest{CommandEnvelope: envelope, SessionID: sessionID}
+	principal, err := decodeOptionalPrincipal(fields)
+	if err != nil {
+		return err
+	}
+	decoded := RestoreRequest{CommandEnvelope: envelope, SessionID: sessionID, Principal: principal}
 	if err := decoded.Validate(); err != nil {
 		return err
 	}
@@ -236,6 +281,7 @@ type GateResponseRequest struct {
 	Values                 map[string]json.RawMessage `json:"values"`
 	ExpectedOpenEventID    EventID                    `json:"expected_open_event_id,omitempty"`
 	ExpectedOpenJournalSeq uint64                     `json:"expected_open_journal_seq,omitempty"`
+	Principal              *Principal                 `json:"principal,omitempty"`
 
 	expectedOpenJournalSeqExplicitlyZero bool
 }
@@ -277,7 +323,7 @@ func (r GateResponseRequest) Validate() error {
 			return invalidRequest(RequestValidationCodeInvalidField, "values")
 		}
 	}
-	return nil
+	return validateOptionalPrincipal(r.Principal)
 }
 
 // UnmarshalJSON strictly decodes a gate response request.
@@ -315,6 +361,10 @@ func (r *GateResponseRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	_, sequencePresent := fields["expected_open_journal_seq"]
+	principal, err := decodeOptionalPrincipal(fields)
+	if err != nil {
+		return err
+	}
 	decoded := GateResponseRequest{
 		CommandEnvelope:                      envelope,
 		SessionID:                            sessionID,
@@ -323,6 +373,7 @@ func (r *GateResponseRequest) UnmarshalJSON(data []byte) error {
 		Values:                               values,
 		ExpectedOpenEventID:                  eventID,
 		ExpectedOpenJournalSeq:               sequence,
+		Principal:                            principal,
 		expectedOpenJournalSeqExplicitlyZero: sequencePresent && sequence == 0,
 	}
 	if err := decoded.Validate(); err != nil {
