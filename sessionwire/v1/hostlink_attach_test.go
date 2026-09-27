@@ -444,6 +444,7 @@ func TestHostLinkFramingConstantsMatchHost(t *testing.T) {
 		{"drain status", sessionwire.HostLinkMethodDrainStatus, "hostlink.drain_status"},
 		{"capability gate_response", sessionwire.HostLinkCapabilityGateResponse, "hostlink.command.gate_response"},
 		{"capability command principal", sessionwire.HostLinkCapabilityAttributionPrincipal, "hostlink.attribution.principal"},
+		{"capability payload reference", sessionwire.HostLinkCapabilityPayloadReference, "hostlink.payload.reference"},
 	}
 	for _, tt := range tests {
 		if tt.got != tt.want {
@@ -457,6 +458,7 @@ func TestHostLinkFramingConstantsMatchHost(t *testing.T) {
 		sessionwire.HostLinkMethodDrain, sessionwire.HostLinkMethodDrainStatus,
 		sessionwire.HostLinkCapabilityGateResponse,
 		sessionwire.HostLinkCapabilityAttributionPrincipal,
+		sessionwire.HostLinkCapabilityPayloadReference,
 	} {
 		if strings.HasPrefix(method, sessionwire.HostLinkChannelPrefix) {
 			t.Errorf("method %q begins with the channel prefix", method)
@@ -468,14 +470,19 @@ func TestHostLinkFramingConstantsMatchHost(t *testing.T) {
 		sessionwire.HostLinkMethodBind, sessionwire.HostLinkMethodUnbind, sessionwire.HostLinkMethodAttach,
 		sessionwire.HostLinkMethodDrain, sessionwire.HostLinkMethodDrainStatus,
 	} {
-		for _, token := range []string{sessionwire.HostLinkCapabilityGateResponse, sessionwire.HostLinkCapabilityAttributionPrincipal} {
+		for _, token := range []string{sessionwire.HostLinkCapabilityGateResponse, sessionwire.HostLinkCapabilityAttributionPrincipal, sessionwire.HostLinkCapabilityPayloadReference} {
 			if token == method {
 				t.Errorf("capability token %q equals reserved method %q", token, method)
 			}
 		}
 	}
-	if sessionwire.HostLinkCapabilityAttributionPrincipal == sessionwire.HostLinkCapabilityGateResponse {
-		t.Error("the principal and gate_response capability tokens must be distinct")
+	tokens := []string{sessionwire.HostLinkCapabilityGateResponse, sessionwire.HostLinkCapabilityAttributionPrincipal, sessionwire.HostLinkCapabilityPayloadReference}
+	for i := range tokens {
+		for j := i + 1; j < len(tokens); j++ {
+			if tokens[i] == tokens[j] {
+				t.Errorf("capability tokens %q and %q must be distinct", tokens[i], tokens[j])
+			}
+		}
 	}
 }
 

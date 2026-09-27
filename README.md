@@ -90,7 +90,10 @@ HostLink specifics a Factory or Host implementer needs:
   `HostLinkCapabilityGateResponse` (`hostlink.command.gate_response`) gates
   gate responses, and `HostLinkCapabilityAttributionPrincipal`
   (`hostlink.attribution.principal`) gates any command carrying `principal` or
-  `metadata`. A Factory must not send a command a Host's reply does not
+  `metadata`, and `HostLinkCapabilityPayloadReference`
+  (`hostlink.payload.reference`) gates placing a session whose pending command
+  body is stored by reference (above SessionStore's 64 KiB inline bound). A
+  Factory must not send a command a Host's reply does not
   support, and must not send `hostlink.attach` to a Host that does not
   advertise it.
 - **Addressing.** A Host advertises a bare base endpoint (`ws`/`wss` scheme and

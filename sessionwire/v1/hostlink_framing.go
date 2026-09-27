@@ -113,6 +113,16 @@ const HostLinkCapabilityGateResponse = "hostlink.command.gate_response"
 // it must never infer the capability from a Host version or lease epoch.
 const HostLinkCapabilityAttributionPrincipal = "hostlink.attribution.principal"
 
+// HostLinkCapabilityPayloadReference is advertised by a Host that applies a
+// command whose private body is stored by reference (an inbox record carrying
+// PayloadRef, written by Factory for a body above SessionStore's inline
+// bound). Such a Host reads the object from the session's scope, verifies its
+// size and digest, and applies it exactly as an inline body. A Factory must
+// place or wake a session holding a pending referenced body only on a Host
+// whose reply Supports this token; an incapable Host refuses the body and the
+// command would never settle.
+const HostLinkCapabilityPayloadReference = "hostlink.payload.reference"
+
 // HostLinkChannelPrefix is the leading segment of every HostLink session
 // channel.
 const HostLinkChannelPrefix = "hostlink.v1."
