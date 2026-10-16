@@ -127,7 +127,7 @@ release is published before any dependent names it.
 
 ## Development
 
-The module targets Go 1.26.8.
+The module targets Go 1.26.9.
 
 ```sh
 GOWORK=off go test ./...   # standalone, against the pinned go.mod
